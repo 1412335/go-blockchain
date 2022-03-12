@@ -1,0 +1,17 @@
+version: '3.6'
+
+services:
+    app:
+        image: go_1.16
+        container_name: Go_TBB
+        build:
+            context: .
+            dockerfile: Dockerfile
+            # args:
+            #     - MODULE=${MODULE}
+        restart: unless-stopped
+        ports:
+            - "${PORT}:${PORT}"
+        volumes:
+            # - ./:/go/src/app/
+            - ./database/:/srv/database/

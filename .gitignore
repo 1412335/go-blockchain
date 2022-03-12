@@ -1,0 +1,9 @@
+.vscode
+node_modules
+dist
+vendor
+docker/mysql/data
+docker/redis/data
+docker/postgres/data
+cert/*.perm
+cert/*.srf

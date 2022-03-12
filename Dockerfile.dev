@@ -1,0 +1,44 @@
+FROM golang:1.16-alpine AS builder
+
+# RUN apt-get -y update \
+#     && apt-get install -y --no-install-recommends libssl-dev \
+#     && apt-get clean \
+#     && rm -rf /var/lib/apt/lists/*
+
+# ENV GOROOT=/usr/local/go
+# ENV GOPATH=$HOME/go
+# ENV GOPATH=$GOPATH:/usr/local/goproject
+# ENV GOBIN=$GOROOT/bin
+ENV PATH=$PATH:/usr/local/go/bin
+
+ENV TZ=Asia/Ho_Chi_Minh
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+WORKDIR /go
+
+RUN go get -u github.com/githubnemo/CompileDaemon
+
+ARG MODULE=app
+ENV MODULE ${MODULE}
+
+RUN mkdir -p /$GOPATH/src/${MODULE}
+
+WORKDIR $GOPATH/src/${MODULE}
+
+COPY go.mod go.sum ./
+
+ENV GO111MODULE=on
+RUN go mod download \
+    && go mod verify
+
+COPY . .
+
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+ENV GOARCH=amd64
+
+EXPOSE 8080
+
+ENTRYPOINT CompileDaemon -exclude-dir='vendor' \
+    --build="go build -o /go/bin/${MODULE}" \
+    --command="/go/bin/${MODULE}"
