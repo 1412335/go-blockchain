@@ -29,9 +29,11 @@ gen-openapi:
 
 #
 .PHONY: run
-run: clean
+run: lint clean
 	@echo "====Run services===="
-	docker-compose up --build
+	docker-compose up -d --build
+	sleep 1
+	docker-compose exec app sh
 
 .PHONY: log
 log:

@@ -13,8 +13,8 @@ type TX struct {
 	Data  string  `json:"data"`
 }
 
-func NewTX(from Account, to Account, value uint, data string) *TX {
-	return &TX{from, to, value, data}
+func NewTX(from Account, to Account, value uint, data string) TX {
+	return TX{from, to, value, data}
 }
 
 func (tx *TX) IsReward() bool {

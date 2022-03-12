@@ -2,42 +2,19 @@ package database
 
 import (
 	"bufio"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"os"
 	"path"
+	"time"
 )
 
-type Snapshot [32]byte
-
-type Block struct {
-	Header BlockHeader
-	TXs []TX
-}
-
-func (b *Block) Hash() (Snapshot, error) {
-	blockJSON, err := json.Marshal(b)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	return sha256.Sum256(blockJSON), nil
-}
-
-type BlockHeader struct {
-	Parent Snapshot
-	Time uint64
-}
-
 type State struct {
-	Balances  map[Account]uint `json:"balances"`
-	txMempool []TX
+	Balances        map[Account]uint `json:"balances"`
+	txMempool       []TX
+	latestBlockHash Hash
 
 	dbFile *os.File
-
-	snapshot Snapshot
 }
 
 func NewStateFromDisk() (*State, error) {
@@ -57,12 +34,12 @@ func NewStateFromDisk() (*State, error) {
 		balances[account] = balance
 	}
 
-	f, err := os.OpenFile(path.Join(cwd, "database", "tx.db"), os.O_APPEND|os.O_RDWR, 0600)
+	f, err := os.OpenFile(path.Join(cwd, "database", "blocks.db"), os.O_APPEND|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}
 
-	state := &State{balances, make([]TX, 0), f, Snapshot{}}
+	state := &State{balances, make([]TX, 0), Hash{}, f}
 
 	scanner := bufio.NewScanner(f)
 
@@ -71,24 +48,35 @@ func NewStateFromDisk() (*State, error) {
 			return nil, err
 		}
 
-		var tx TX
-		if err := json.Unmarshal(scanner.Bytes(), &tx); err != nil {
+		var blockFS BlockFS
+		if err := json.Unmarshal(scanner.Bytes(), &blockFS); err != nil {
 			return nil, err
 		}
 
-		if err := state.apply(tx); err != nil {
+		if err := state.AddBlock(blockFS.Block); err != nil {
 			return nil, err
 		}
+
+		state.latestBlockHash = blockFS.BlockHash
 	}
 
 	return state, nil
 }
 
-func (s *State) Add(tx TX) error {
+func (s *State) AddTx(tx TX) error {
 	if err := s.apply(tx); err != nil {
 		return err
 	}
 	s.txMempool = append(s.txMempool, tx)
+	return nil
+}
+
+func (s *State) AddBlock(b Block) error {
+	for _, tx := range b.TXs {
+		if err := s.AddTx(tx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -108,53 +96,53 @@ func (s *State) apply(tx TX) error {
 	return nil
 }
 
-func (s *State) Persist() (Snapshot, error) {
-	mempoolCp := make([]TX, len(s.txMempool))
-	copy(mempoolCp, s.txMempool)
+func (s *State) LatestBlockHash() Hash {
+	return s.latestBlockHash
+}
 
-	for i := range mempoolCp {
-		txJSON, err := json.Marshal(mempoolCp[i])
-		if err != nil {
-			return Snapshot{}, err
-		}
-
-		fmt.Printf("Persist new tx to disk\n")
-		fmt.Printf("%s\n", txJSON)
-		if _, err := s.dbFile.Write(append(txJSON, '\n')); err != nil {
-			return Snapshot{}, err
-		}
-
-		if err := s.doSnapshot(); err != nil {
-			return Snapshot{}, err
-		}
-		fmt.Printf("New DB snapshot: %x\n", s.snapshot)
-
-		s.txMempool = s.txMempool[1:]
+func (s *State) Persist() (Hash, error) {
+	block := NewBlock(s.latestBlockHash, uint64(time.Now().Unix()), s.txMempool)
+	blockHash, err := block.Hash()
+	if err != nil {
+		return Hash{}, err
 	}
 
-	return s.snapshot, nil
+	blockFS := BlockFS{blockHash, block}
+	blockFSJSON, err := json.Marshal(blockFS)
+	if err != nil {
+		return Hash{}, err
+	}
+
+	fmt.Printf("Persist new block to disk\n")
+	fmt.Printf("\t%s\n", blockFSJSON)
+	if _, err := s.dbFile.Write(append(blockFSJSON, '\n')); err != nil {
+		return Hash{}, err
+	}
+
+	s.latestBlockHash = blockHash
+	fmt.Printf("New DB hash: %x\n", s.latestBlockHash)
+
+	s.txMempool = []TX{}
+
+	return s.latestBlockHash, nil
 }
 
 func (s *State) Close() error {
 	return s.dbFile.Close()
 }
 
-func (s *State) doSnapshot() error {
-	// re-read the whole file from the first byte
-	if _, err := s.dbFile.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
+// func (s *State) doSnapshot() error {
+// 	// re-read the whole file from the first byte
+// 	if _, err := s.dbFile.Seek(0, io.SeekStart); err != nil {
+// 		return err
+// 	}
 
-	txData, err := ioutil.ReadAll(s.dbFile)
-	if err != nil {
-		return err
-	}
+// 	txData, err := ioutil.ReadAll(s.dbFile)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	s.snapshot = sha256.Sum256(txData)
+// 	s.latestBlockHash = sha256.Sum256(txData)
 
-	return nil
-}
-
-func (s *State) LatestSnapshot() Snapshot {
-	return s.snapshot
-}
+// 	return nil
+// }
