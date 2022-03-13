@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"time"
 )
 
@@ -17,13 +16,12 @@ type State struct {
 	dbFile *os.File
 }
 
-func NewStateFromDisk() (*State, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
+func NewStateFromDisk(dir string) (*State, error) {
+	if err := initDataDirIfNotExists(dir); err != nil {
 		return nil, err
 	}
 
-	genesisPath := path.Join(cwd, "database", "genesis.json")
+	genesisPath := getGenesisJSONFilePath(dir)
 	genesis, err := loadGenesis(genesisPath)
 	if err != nil {
 		return nil, err
@@ -34,7 +32,7 @@ func NewStateFromDisk() (*State, error) {
 		balances[account] = balance
 	}
 
-	f, err := os.OpenFile(path.Join(cwd, "database", "blocks.db"), os.O_APPEND|os.O_RDWR, 0600)
+	f, err := os.OpenFile(getBlocksDBFilePath(dir), os.O_APPEND|os.O_RDWR, 0600)
 	if err != nil {
 		return nil, err
 	}

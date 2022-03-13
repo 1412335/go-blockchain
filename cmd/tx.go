@@ -32,6 +32,7 @@ func txAddCmd() *cobra.Command {
 		Use:   "add",
 		Short: "Add new transaction",
 		Run: func(cmd *cobra.Command, args []string) {
+			dir, _ := cmd.Flags().GetString(flagDataDir)
 			from, _ := cmd.Flags().GetString(flagFrom)
 			to, _ := cmd.Flags().GetString(flagTo)
 			value, _ := cmd.Flags().GetUint(flagValue)
@@ -39,19 +40,19 @@ func txAddCmd() *cobra.Command {
 
 			tx := database.NewTX(database.NewAccount(from), database.NewAccount(to), value, data)
 
-			state, err := database.NewStateFromDisk()
+			state, err := database.NewStateFromDisk(dir)
 			if err != nil {
-				fmt.Fprint(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 
 			if err := state.AddTx(tx); err != nil {
-				fmt.Fprint(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 
 			if _, err := state.Persist(); err != nil {
-				fmt.Fprint(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 
@@ -69,6 +70,8 @@ func txAddCmd() *cobra.Command {
 	txAddCmd.MarkFlagRequired(flagValue)
 
 	txAddCmd.Flags().String(flagData, "", "Possible values: 'reward'")
+
+	addDefaultRequiredFlags(txAddCmd)
 
 	return txAddCmd
 }

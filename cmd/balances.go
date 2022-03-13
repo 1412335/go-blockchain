@@ -8,6 +8,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const flagDataDir = "db"
+
 func balancesCmd() *cobra.Command {
 	var balancesCmd = &cobra.Command{
 		Use:   "balances",
@@ -17,27 +19,43 @@ func balancesCmd() *cobra.Command {
 		},
 	}
 
-	balancesCmd.AddCommand(balancesListCmd)
+	balancesCmd.AddCommand(balancesListCmd())
 
 	return balancesCmd
 }
 
-var balancesListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "Show all balances",
-	Run: func(cmd *cobra.Command, args []string) {
-		state, err := database.NewStateFromDisk()
-		if err != nil {
-			fmt.Fprint(os.Stderr, err)
-			os.Exit(1)
-		}
-		defer state.Close()
+func balancesListCmd() *cobra.Command {
+	var balancesListCmd = &cobra.Command{
+		Use:   "list",
+		Short: "Show all balances",
+		Run: func(cmd *cobra.Command, args []string) {
+			dir, err := cmd.Flags().GetString(flagDataDir)
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
 
-		fmt.Printf("Accounts balances at %x:\n", state.LatestBlockHash())
-		fmt.Println("__________________")
-		fmt.Println("")
-		for account, balance := range state.Balances {
-			fmt.Printf("%s: %d\n", account, balance)
-		}
-	},
+			state, err := database.NewStateFromDisk(dir)
+			if err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+			defer state.Close()
+
+			fmt.Printf("Accounts balances at %x:\n", state.LatestBlockHash())
+			fmt.Println("__________________")
+			fmt.Println("")
+			for account, balance := range state.Balances {
+				fmt.Printf("%s: %d\n", account, balance)
+			}
+		},
+	}
+
+	addDefaultRequiredFlags(balancesListCmd)
+	return balancesListCmd
+}
+
+func addDefaultRequiredFlags(cmd *cobra.Command) {
+	cmd.Flags().String(flagDataDir, "", "Absolute path to the database")
+	cmd.MarkFlagRequired(flagDataDir)
 }
