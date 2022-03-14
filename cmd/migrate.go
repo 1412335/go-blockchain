@@ -27,7 +27,7 @@ func migrateCmd() *cobra.Command {
 			}
 			defer state.Close()
 
-			initBlock := database.NewBlock(state.LatestBlockHash(), uint64(time.Now().Unix()), []database.TX{
+			initBlock := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
 				database.NewTX("andrej", "babayaga", 2000, ""),
 				database.NewTX("andrej", "andrej", 100, "reward"),
 				database.NewTX("babayaga", "andrej", 1, ""),
