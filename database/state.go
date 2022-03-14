@@ -51,7 +51,7 @@ func NewStateFromDisk(dir string) (*State, error) {
 			return nil, err
 		}
 
-		if err := state.AddBlock(blockFS.Block); err != nil {
+		if err := state.applyBlock(blockFS.Block); err != nil {
 			return nil, err
 		}
 
@@ -91,6 +91,15 @@ func (s *State) apply(tx TX) error {
 	s.Balances[tx.From] -= tx.Value
 	s.Balances[tx.To] += tx.Value
 
+	return nil
+}
+
+func (s *State) applyBlock(b Block) error {
+	for _, tx := range b.TXs {
+		if err := s.apply(tx); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
