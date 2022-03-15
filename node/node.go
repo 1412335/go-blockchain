@@ -182,6 +182,7 @@ func (n *Node) fetchNewBlocksAndPeers(ctx context.Context) {
 	}
 }
 
+// Add peer to node.knowPeers
 func (n *Node) joinKnownPeers(ctx context.Context, peer PeerNode) error {
 	if peer.connected {
 		return nil
@@ -220,6 +221,7 @@ func (n *Node) joinKnownPeers(ctx context.Context, peer PeerNode) error {
 	return nil
 }
 
+// Fetch blocks from peer
 func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) error {
 	localBlockNumber := n.state.LatestBlock().Header.Number
 
@@ -258,6 +260,7 @@ func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) 
 	return nil
 }
 
+// Sync node.knownPeers with peer.knownPeers
 func (n *Node) syncKnownPeers(knownPeers map[string]PeerNode) {
 	for _, peer := range knownPeers {
 		if peer.IP == n.ip && peer.Port == n.port {

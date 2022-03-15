@@ -117,8 +117,6 @@ func (s *State) AddBlock(b Block) (Hash, error) {
 	s.latestBlockHash = hash
 	s.hasGenesisBlock = true
 
-	fmt.Printf("Block number: %d", s.latestBlock.Header.Number)
-
 	return hash, nil
 }
 
@@ -129,7 +127,7 @@ func (s *State) apply(tx TX) error {
 	}
 
 	if s.Balances[tx.From] < tx.Value {
-		return fmt.Errorf("not enough balance")
+		return fmt.Errorf("wrong TX. Sender %s balance is %d, but cost is %d", tx.From, s.Balances[tx.From], tx.Value)
 	}
 
 	s.Balances[tx.From] -= tx.Value
