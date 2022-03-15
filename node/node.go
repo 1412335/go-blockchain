@@ -1,13 +1,19 @@
 package node
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
 )
+
+const endpointStatus = "/node/status"
+const endpointAddPeer = "/node/peer"
+const endpointFetchBlocks = "/node/blocks"
 
 type ErrRes struct {
 	Error string `json:"error"`
@@ -30,20 +36,33 @@ type TxAddRes struct {
 }
 
 type StatusRes struct {
-	Hash       database.Hash `json:"block_hash"`
-	Number     uint64        `json:"block_number"`
-	KnownPeers []PeerNode    `json:"known_peers"`
+	Hash       database.Hash       `json:"block_hash"`
+	Number     uint64              `json:"block_number"`
+	KnownPeers map[string]PeerNode `json:"known_peers"`
 }
 
 type PeerNode struct {
 	IP          string `json:"ip"`
 	Port        uint64 `json:"port"`
 	IsBootstrap bool   `json:"is_bootstrap"`
-	IsActive    bool   `json:"is_active"`
+	connected   bool
 }
 
-func NewPeerNode(ip string, port uint64, isBootstrap bool, isActive bool) PeerNode {
-	return PeerNode{ip, port, isBootstrap, isActive}
+type AddPeerRes struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
+}
+
+type FetchBlocksRes struct {
+	Blocks []database.Block `json:"blocks"`
+}
+
+func NewPeerNode(ip string, port uint64, isBootstrap bool, connected bool) PeerNode {
+	return PeerNode{ip, port, isBootstrap, connected}
+}
+
+func (p *PeerNode) TCPAddress() string {
+	return fmt.Sprintf("%s:%d", p.IP, p.Port)
 }
 
 type Node struct {
@@ -53,15 +72,17 @@ type Node struct {
 
 	state *database.State
 
-	knownPeers []PeerNode
+	knownPeers map[string]PeerNode
 }
 
 func New(dataDir string, ip string, port uint64, bootstrap PeerNode) *Node {
 	return &Node{
-		dataDir:    dataDir,
-		ip:         ip,
-		port:       port,
-		knownPeers: []PeerNode{bootstrap},
+		dataDir: dataDir,
+		ip:      ip,
+		port:    port,
+		knownPeers: map[string]PeerNode{
+			bootstrap.TCPAddress(): bootstrap,
+		},
 	}
 }
 
@@ -76,6 +97,9 @@ func (n *Node) Run() error {
 
 	n.state = state
 
+	ctx := context.Background()
+	go n.sync(ctx)
+
 	http.HandleFunc("/balances/list", func(w http.ResponseWriter, r *http.Request) {
 		listBalancesHandler(w, r, state)
 	})
@@ -88,70 +112,200 @@ func (n *Node) Run() error {
 		nodeStatusHandler(w, r, n)
 	})
 
+	http.HandleFunc(endpointAddPeer, func(w http.ResponseWriter, r *http.Request) {
+		addPeerHandler(w, r, n)
+	})
+
+	http.HandleFunc(endpointFetchBlocks, func(w http.ResponseWriter, r *http.Request) {
+		fetchBlocksHandler(w, r, n)
+	})
+
 	return http.ListenAndServe(fmt.Sprintf(":%d", n.port), nil)
 }
 
-func listBalancesHandler(w http.ResponseWriter, _ *http.Request, state *database.State) {
-	writeResponse(w, BalancesRes{
-		Hash:     state.LatestBlockHash(),
-		Balances: state.Balances,
-	})
+func (n *Node) AddPeer(peer PeerNode) {
+	n.knownPeers[peer.TCPAddress()] = peer
 }
 
-func addTransactionHandler(w http.ResponseWriter, r *http.Request, state *database.State) {
-	reqBodyJSON, err := ioutil.ReadAll(r.Body)
+func (n *Node) RemovePeer(peer PeerNode) {
+	delete(n.knownPeers, peer.TCPAddress())
+}
+
+func (n *Node) sync(ctx context.Context) error {
+	ticker := time.NewTicker(45 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			fmt.Println("Searching for new Peer and Block...")
+
+			n.fetchNewBlocksAndPeers(ctx)
+
+		case <-ctx.Done():
+			ticker.Stop()
+		}
+	}
+}
+
+func (n *Node) fetchNewBlocksAndPeers(ctx context.Context) {
+	for _, knownPeer := range n.knownPeers {
+		if knownPeer.IP == n.ip && knownPeer.Port == n.port {
+			continue
+		}
+
+		fmt.Printf("Searching for new Peers and their Blocks and Peers: '%s'\n", knownPeer.TCPAddress())
+
+		status, err := queryPeerStatus(ctx, knownPeer)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			fmt.Printf("Peer '%s' was removed from KnownPeers\n", knownPeer.TCPAddress())
+
+			n.RemovePeer(knownPeer)
+			continue
+		}
+
+		if err := n.joinKnownPeers(ctx, knownPeer); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+
+		if err := n.syncBlocks(ctx, knownPeer, status); err != nil {
+			fmt.Printf("Error: %v\n", err)
+			continue
+		}
+
+		n.syncKnownPeers(status.KnownPeers)
+	}
+}
+
+func (n *Node) joinKnownPeers(ctx context.Context, peer PeerNode) error {
+	if peer.connected {
+		return nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s?ip=%s&port=%d", peer.TCPAddress(), endpointAddPeer, n.ip, n.port), nil)
 	if err != nil {
-		writeErrorResponse(w, err)
-		return
+		return err
+	}
+
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	rBodyJSON, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return err
 	}
 	defer r.Body.Close()
 
-	var txAddReq TxAddReq
-	if err = json.Unmarshal(reqBodyJSON, &txAddReq); err != nil {
-		writeErrorResponse(w, err)
-		return
+	addPeerRes := AddPeerRes{}
+	if err := json.Unmarshal(rBodyJSON, &addPeerRes); err != nil {
+		return err
+	}
+	if addPeerRes.Error != "" {
+		return fmt.Errorf(addPeerRes.Error)
 	}
 
-	tx := database.NewTX(database.Account(txAddReq.From), database.Account(txAddReq.To), txAddReq.Value, txAddReq.Data)
+	peer.connected = addPeerRes.Success
+	n.AddPeer(peer)
 
-	if err = state.AddTx(tx); err != nil {
-		writeErrorResponse(w, err)
-		return
+	if !addPeerRes.Success {
+		return fmt.Errorf("unable to join KnownPeers of '%s'", peer.TCPAddress())
+	}
+	return nil
+}
+
+func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) error {
+	localBlockNumber := n.state.LatestBlock().Header.Number
+
+	if status.Hash.IsEmpty() {
+		return nil
 	}
 
-	hash, err := state.Persist()
+	if status.Number < localBlockNumber {
+		return nil
+	}
+
+	if status.Number == 0 && !n.state.LatestBlockHash().IsEmpty() {
+		return nil
+	}
+
+	newBlocksCount := status.Number - localBlockNumber
+	if localBlockNumber == 0 && status.Number == 0 {
+		newBlocksCount = 1
+	}
+	fmt.Printf("Found %d new blocks from Peer %s\n", newBlocksCount, peer.TCPAddress())
+
+	blocks, err := fetchBlocksFromPeer(ctx, peer, n.state.LatestBlockHash())
 	if err != nil {
-		writeErrorResponse(w, err)
-		return
+		return err
 	}
 
-	writeResponse(w, TxAddRes{hash})
+	for _, block := range blocks {
+		if _, err := n.state.AddBlock(block); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-func nodeStatusHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
-	writeResponse(w, StatusRes{
-		Hash:       n.state.LatestBlockHash(),
-		Number:     n.state.LatestBlock().Header.Number,
-		KnownPeers: n.knownPeers,
-	})
+func (n *Node) syncKnownPeers(knownPeers map[string]PeerNode) {
+	for _, peer := range knownPeers {
+		if peer.IP == n.ip && peer.Port == n.port {
+			continue
+		}
+		if _, isKnown := n.knownPeers[peer.TCPAddress()]; !isKnown {
+			fmt.Printf("Found new Peer: %s\n", peer.TCPAddress())
+			n.AddPeer(peer)
+		}
+	}
 }
 
-func writeResponse(w http.ResponseWriter, data interface{}) {
-	content, err := json.Marshal(data)
+func queryPeerStatus(ctx context.Context, peer PeerNode) (StatusRes, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", peer.TCPAddress(), endpointStatus), nil)
 	if err != nil {
-		writeErrorResponse(w, err)
-		return
+		return StatusRes{}, err
 	}
 
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write(content)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return StatusRes{}, err
+	}
+
+	rBodyJSON, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return StatusRes{}, err
+	}
+	defer r.Body.Close()
+
+	var statusRes StatusRes
+	if err = json.Unmarshal(rBodyJSON, &statusRes); err != nil {
+		return StatusRes{}, err
+	}
+	return statusRes, nil
 }
 
-func writeErrorResponse(w http.ResponseWriter, err error) {
-	errJSON, _ := json.Marshal(ErrRes{err.Error()})
+func fetchBlocksFromPeer(ctx context.Context, peer PeerNode, hash database.Hash) ([]database.Block, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s?hash=%x", peer.TCPAddress(), endpointFetchBlocks, hash), nil)
+	if err != nil {
+		return nil, err
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusInternalServerError)
-	w.Write(errJSON)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	rBodyJSON, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Body.Close()
+
+	var statusRes FetchBlocksRes
+	if err = json.Unmarshal(rBodyJSON, &statusRes); err != nil {
+		return nil, err
+	}
+	return statusRes.Blocks, nil
 }

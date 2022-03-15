@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -17,6 +18,11 @@ func (h *Hash) UnmarshalText(data []byte) error {
 	// _, err := base64.StdEncoding.Decode(h[:], data)
 	_, err := hex.Decode(h[:], data)
 	return err
+}
+
+func (h Hash) IsEmpty() bool {
+	emptyHash := Hash{}
+	return bytes.Equal(h[:], emptyHash[:])
 }
 
 type Block struct {

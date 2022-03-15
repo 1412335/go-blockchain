@@ -27,27 +27,37 @@ func migrateCmd() *cobra.Command {
 			}
 			defer state.Close()
 
-			initBlock := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
+			block0 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
 				database.NewTX("andrej", "babayaga", 2000, ""),
 				database.NewTX("andrej", "andrej", 100, "reward"),
+			})
+			if _, err = state.AddBlock(block0); err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			block1 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
 				database.NewTX("babayaga", "andrej", 1, ""),
 				database.NewTX("babayaga", "caesar", 1000, ""),
 				database.NewTX("babayaga", "andrej", 50, ""),
 				database.NewTX("andrej", "andrej", 600, "reward"),
 			})
-
-			if err = state.AddBlock(initBlock); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-
-			blockHash, err := state.Persist()
-			if err != nil {
+			if _, err = state.AddBlock(block1); err != nil {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)
 			}
 
-			fmt.Printf("Accounts balances at: %x\n", blockHash)
+			block2 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
+				database.NewTX("babayaga", "andrej", 100, ""),
+				database.NewTX("caesar", "andrej", 50, ""),
+				database.NewTX("andrej", "andrej", 200, "reward"),
+			})
+			if _, err = state.AddBlock(block2); err != nil {
+				fmt.Fprint(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			fmt.Printf("Accounts balances at: %x\n", state.LatestBlockHash())
 		},
 	}
 

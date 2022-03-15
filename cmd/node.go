@@ -37,7 +37,7 @@ func runCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			bootstrap := node.NewPeerNode("127.0.0.1", 8080, true, true)
+			bootstrap := node.NewPeerNode("127.0.0.1", 8080, true, false)
 
 			n := node.New(dir, ip, port, bootstrap)
 			if err := n.Run(); err != nil {

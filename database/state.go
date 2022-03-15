@@ -2,8 +2,10 @@ package database
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"time"
 )
@@ -74,13 +76,48 @@ func (s *State) AddTx(tx TX) error {
 	return nil
 }
 
-func (s *State) AddBlock(b Block) error {
-	for _, tx := range b.TXs {
-		if err := s.AddTx(tx); err != nil {
-			return err
+func (s *State) AddBlock(b Block) (Hash, error) {
+	pendingState := s.copy()
+
+	nextExpectedBlockNumber := pendingState.NextBlockNumber()
+	if pendingState.hasGenesisBlock {
+		if b.Header.Number != nextExpectedBlockNumber {
+			return Hash{}, fmt.Errorf("expected block number %d, got %d", nextExpectedBlockNumber, b.Header.Number)
+		}
+		if pendingState.latestBlock.Header.Number > 0 && !bytes.Equal(pendingState.latestBlockHash[:], b.Header.Parent[:]) {
+			return Hash{}, fmt.Errorf("expected block hash %d, got %d", pendingState.latestBlockHash[:], b.Header.Parent[:])
 		}
 	}
-	return nil
+
+	for _, tx := range b.TXs {
+		if err := pendingState.apply(tx); err != nil {
+			return Hash{}, err
+		}
+	}
+
+	hash, err := b.Hash()
+	if err != nil {
+		return Hash{}, err
+	}
+
+	blockFS := BlockFS{hash, b}
+	blockFSJSON, err := json.Marshal(blockFS)
+	if err != nil {
+		return Hash{}, err
+	}
+
+	fmt.Printf("Persist new block to disk\n")
+	fmt.Printf("\t%s\n", blockFSJSON)
+	if _, err := s.dbFile.Write(append(blockFSJSON, '\n')); err != nil {
+		return Hash{}, err
+	}
+
+	s.Balances = pendingState.Balances
+	s.latestBlock = b
+	s.latestBlockHash = hash
+	s.hasGenesisBlock = true
+
+	return hash, nil
 }
 
 func (s *State) apply(tx TX) error {
@@ -152,6 +189,71 @@ func (s *State) Persist() (Hash, error) {
 
 func (s *State) Close() error {
 	return s.dbFile.Close()
+}
+
+func (s *State) GetBlocksAfter(hash Hash) ([]Block, error) {
+	currentOffset, err := s.dbFile.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return nil, err
+	}
+
+	// re-read the whole file from the first byte
+	if _, err := s.dbFile.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	blocks := []Block{}
+	startCollect := false
+
+	if hash.IsEmpty() {
+		startCollect = true
+	}
+
+	scanner := bufio.NewScanner(s.dbFile)
+
+	for scanner.Scan() {
+		if err := scanner.Err(); err != nil {
+			return nil, err
+		}
+
+		var blockFS BlockFS
+		if err := json.Unmarshal(scanner.Bytes(), &blockFS); err != nil {
+			return nil, err
+		}
+
+		if startCollect {
+			blocks = append(blocks, blockFS.Block)
+			continue
+		}
+
+		if bytes.Equal(hash[:], blockFS.BlockHash[:]) {
+			startCollect = true
+		}
+	}
+
+	if _, err := s.dbFile.Seek(currentOffset, io.SeekStart); err != nil {
+		return nil, err
+	}
+
+	return blocks, nil
+}
+
+func (s *State) copy() *State {
+	cp := &State{}
+
+	cp.Balances = make(map[Account]uint)
+	for accout, balance := range s.Balances {
+		cp.Balances[accout] = balance
+	}
+
+	cp.txMempool = make([]TX, len(s.txMempool))
+	cp.txMempool = append(cp.txMempool, s.txMempool...)
+
+	cp.latestBlock = s.latestBlock
+	cp.latestBlockHash = s.latestBlockHash
+	cp.hasGenesisBlock = s.hasGenesisBlock
+
+	return cp
 }
 
 // func (s *State) doSnapshot() error {
