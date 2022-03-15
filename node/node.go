@@ -97,15 +97,19 @@ func (n *Node) Run() error {
 
 	n.state = state
 
+	fmt.Println("Blockchain state:")
+	fmt.Printf("	- height: %d\n", n.state.LatestBlock().Header.Number)
+	fmt.Printf("	- hash: %x\n", n.state.LatestBlockHash())
+
 	ctx := context.Background()
 	go n.sync(ctx)
 
 	http.HandleFunc("/balances/list", func(w http.ResponseWriter, r *http.Request) {
-		listBalancesHandler(w, r, state)
+		listBalancesHandler(w, r, n)
 	})
 
 	http.HandleFunc("/tx/add", func(w http.ResponseWriter, r *http.Request) {
-		addTransactionHandler(w, r, state)
+		addTransactionHandler(w, r, n)
 	})
 
 	http.HandleFunc("/node/status", func(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +240,10 @@ func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) 
 		newBlocksCount = 1
 	}
 	fmt.Printf("Found %d new blocks from Peer %s\n", newBlocksCount, peer.TCPAddress())
+
+	if newBlocksCount == 0 {
+		return nil
+	}
 
 	blocks, err := fetchBlocksFromPeer(ctx, peer, n.state.LatestBlockHash())
 	if err != nil {

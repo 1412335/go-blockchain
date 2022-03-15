@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
 	"github.com/spf13/cobra"
@@ -46,17 +47,25 @@ func txAddCmd() *cobra.Command {
 				os.Exit(1)
 			}
 
-			if err := state.AddTx(tx); err != nil {
+			// if err := state.AddTx(tx); err != nil {
+			// 	fmt.Fprintln(os.Stderr, err)
+			// 	os.Exit(1)
+			// }
+
+			// if _, err := state.Persist(); err != nil {
+			// 	fmt.Fprintln(os.Stderr, err)
+			// 	os.Exit(1)
+			// }
+
+			block := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{tx})
+
+			hash, err := state.AddBlock(block)
+			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}
 
-			if _, err := state.Persist(); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-
-			fmt.Println("TX successfully added to the ledger.")
+			fmt.Printf("TX successfully added to the ledger at %x\n", hash)
 		},
 	}
 

@@ -6,18 +6,19 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
 )
 
-func listBalancesHandler(w http.ResponseWriter, _ *http.Request, state *database.State) {
+func listBalancesHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
 	writeResponse(w, BalancesRes{
-		Hash:     state.LatestBlockHash(),
-		Balances: state.Balances,
+		Hash:     n.state.LatestBlockHash(),
+		Balances: n.state.Balances,
 	})
 }
 
-func addTransactionHandler(w http.ResponseWriter, r *http.Request, state *database.State) {
+func addTransactionHandler(w http.ResponseWriter, r *http.Request, n *Node) {
 	reqBodyJSON, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		writeErrorResponse(w, err)
@@ -33,12 +34,9 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, state *databa
 
 	tx := database.NewTX(database.Account(txAddReq.From), database.Account(txAddReq.To), txAddReq.Value, txAddReq.Data)
 
-	if err = state.AddTx(tx); err != nil {
-		writeErrorResponse(w, err)
-		return
-	}
+	block := database.NewBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{tx})
 
-	hash, err := state.Persist()
+	hash, err := n.state.AddBlock(block)
 	if err != nil {
 		writeErrorResponse(w, err)
 		return
@@ -48,11 +46,12 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, state *databa
 }
 
 func nodeStatusHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
-	writeResponse(w, StatusRes{
+	res := StatusRes{
 		Hash:       n.state.LatestBlockHash(),
 		Number:     n.state.LatestBlock().Header.Number,
 		KnownPeers: n.knownPeers,
-	})
+	}
+	writeResponse(w, res)
 }
 
 func addPeerHandler(w http.ResponseWriter, r *http.Request, n *Node) {

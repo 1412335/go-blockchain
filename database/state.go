@@ -117,6 +117,8 @@ func (s *State) AddBlock(b Block) (Hash, error) {
 	s.latestBlockHash = hash
 	s.hasGenesisBlock = true
 
+	fmt.Printf("Block number: %d", s.latestBlock.Header.Number)
+
 	return hash, nil
 }
 
