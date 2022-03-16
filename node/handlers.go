@@ -6,10 +6,47 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
 )
+
+type ErrRes struct {
+	Error string `json:"error"`
+}
+
+type BalancesRes struct {
+	Hash     database.Hash             `json:"hash"`
+	Balances map[database.Account]uint `json:"balances"`
+}
+
+type TxAddReq struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Value uint   `json:"value"`
+	Data  string `json:"data"`
+}
+
+type TxAddRes struct {
+	// Hash    database.Hash `json:"block_hash"`
+	Success bool `json:"success"`
+}
+
+type StatusRes struct {
+	Hash       database.Hash       `json:"block_hash"`
+	Number     uint64              `json:"block_number"`
+	KnownPeers map[string]PeerNode `json:"known_peers"`
+
+	PendingTxs []database.TX `json:"pending_txs"`
+}
+
+type AddPeerRes struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error"`
+}
+
+type FetchBlocksRes struct {
+	Blocks []database.Block `json:"blocks"`
+}
 
 func listBalancesHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
 	writeResponse(w, BalancesRes{
@@ -32,30 +69,44 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, n *Node) {
 		return
 	}
 
-	tx := database.NewTX(database.Account(txAddReq.From), database.Account(txAddReq.To), txAddReq.Value, txAddReq.Data)
+	tx := database.NewTX(txAddReq.From, txAddReq.To, txAddReq.Value, txAddReq.Data)
 
-	nonce, err := database.RandomNonce()
+	txHash, err := tx.Hash()
 	if err != nil {
 		writeErrorResponse(w, err)
 		return
 	}
 
-	block := database.NewBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, []database.TX{tx})
+	n.pendingTxs[txHash.Hex()] = tx
 
-	hash, err := n.state.AddBlock(block)
-	if err != nil {
-		writeErrorResponse(w, err)
-		return
-	}
+	// nonce, err := database.RandomNonce()
+	// if err != nil {
+	// 	writeErrorResponse(w, err)
+	// 	return
+	// }
 
-	writeResponse(w, TxAddRes{hash})
+	// block := database.NewBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, []database.TX{tx})
+
+	// hash, err := n.state.AddBlock(block)
+	// if err != nil {
+	// 	writeErrorResponse(w, err)
+	// 	return
+	// }
+
+	writeResponse(w, TxAddRes{true})
 }
 
 func nodeStatusHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
+	var pendingTxs []database.TX
+	for _, tx := range n.pendingTxs {
+		pendingTxs = append(pendingTxs, tx)
+	}
+
 	res := StatusRes{
 		Hash:       n.state.LatestBlockHash(),
 		Number:     n.state.LatestBlock().Header.Number,
 		KnownPeers: n.knownPeers,
+		PendingTxs: pendingTxs,
 	}
 	writeResponse(w, res)
 }

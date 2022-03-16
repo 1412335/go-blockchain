@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -40,7 +41,7 @@ func runCmd() *cobra.Command {
 			bootstrap := node.NewPeerNode("127.0.0.1", 8080, true, false)
 
 			n := node.New(dir, ip, port, bootstrap)
-			if err := n.Run(); err != nil {
+			if err := n.Run(context.Background()); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
 			}

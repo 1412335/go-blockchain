@@ -40,8 +40,8 @@ func createRandomPendingBlock() PendingBlock {
 		number: 0,
 		time:   uint64(time.Now().Unix()),
 		txs: []database.TX{
-			database.NewTX(database.Account("andrej"), database.Account("andrej"), 1, ""),
-			database.NewTX(database.Account("andrej"), database.Account("andrej"), 100, "reward"),
+			database.NewTX("andrej", "andrej", 1, ""),
+			database.NewTX("andrej", "andrej", 100, "reward"),
 		},
 	}
 }

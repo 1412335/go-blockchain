@@ -2,9 +2,7 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"time"
 
@@ -15,46 +13,13 @@ const endpointStatus = "/node/status"
 const endpointAddPeer = "/node/peer"
 const endpointFetchBlocks = "/node/blocks"
 
-type ErrRes struct {
-	Error string `json:"error"`
-}
-
-type BalancesRes struct {
-	Hash     database.Hash             `json:"hash"`
-	Balances map[database.Account]uint `json:"balances"`
-}
-
-type TxAddReq struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Value uint   `json:"value"`
-	Data  string `json:"data"`
-}
-
-type TxAddRes struct {
-	Hash database.Hash `json:"block_hash"`
-}
-
-type StatusRes struct {
-	Hash       database.Hash       `json:"block_hash"`
-	Number     uint64              `json:"block_number"`
-	KnownPeers map[string]PeerNode `json:"known_peers"`
-}
+const miningIntervalSecs = 10
 
 type PeerNode struct {
 	IP          string `json:"ip"`
 	Port        uint64 `json:"port"`
 	IsBootstrap bool   `json:"is_bootstrap"`
 	connected   bool
-}
-
-type AddPeerRes struct {
-	Success bool   `json:"success"`
-	Error   string `json:"error"`
-}
-
-type FetchBlocksRes struct {
-	Blocks []database.Block `json:"blocks"`
 }
 
 func NewPeerNode(ip string, port uint64, isBootstrap bool, connected bool) PeerNode {
@@ -73,6 +38,11 @@ type Node struct {
 	state *database.State
 
 	knownPeers map[string]PeerNode
+
+	archiveTxs   map[string]database.TX
+	pendingTxs   map[string]database.TX
+	isMining     bool
+	newSyncBlock chan database.Block
 }
 
 func New(dataDir string, ip string, port uint64, bootstrap PeerNode) *Node {
@@ -83,10 +53,14 @@ func New(dataDir string, ip string, port uint64, bootstrap PeerNode) *Node {
 		knownPeers: map[string]PeerNode{
 			bootstrap.TCPAddress(): bootstrap,
 		},
+		archiveTxs:   make(map[string]database.TX),
+		pendingTxs:   make(map[string]database.TX),
+		isMining:     false,
+		newSyncBlock: make(chan database.Block),
 	}
 }
 
-func (n *Node) Run() error {
+func (n *Node) Run(ctx context.Context) error {
 	fmt.Printf("Listening on HTTP port: %d\n", n.port)
 
 	state, err := database.NewStateFromDisk(n.dataDir)
@@ -101,8 +75,8 @@ func (n *Node) Run() error {
 	fmt.Printf("	- height: %d\n", n.state.LatestBlock().Header.Number)
 	fmt.Printf("	- hash: %x\n", n.state.LatestBlockHash())
 
-	ctx := context.Background()
 	go n.sync(ctx)
+	go n.mine(ctx)
 
 	http.HandleFunc("/balances/list", func(w http.ResponseWriter, r *http.Request) {
 		listBalancesHandler(w, r, n)
@@ -124,7 +98,20 @@ func (n *Node) Run() error {
 		fetchBlocksHandler(w, r, n)
 	})
 
-	return http.ListenAndServe(fmt.Sprintf(":%d", n.port), nil)
+	server := &http.Server{
+		Addr: fmt.Sprintf(":%d", n.port),
+	}
+
+	go func() {
+		<-ctx.Done()
+		_ = server.Close()
+	}()
+
+	err = server.ListenAndServe()
+	if err == http.ErrServerClosed {
+		return nil
+	}
+	return err
 }
 
 func (n *Node) AddPeer(peer PeerNode) {
@@ -135,188 +122,88 @@ func (n *Node) RemovePeer(peer PeerNode) {
 	delete(n.knownPeers, peer.TCPAddress())
 }
 
-func (n *Node) sync(ctx context.Context) error {
-	ticker := time.NewTicker(45 * time.Second)
+func (n *Node) mine(ctx context.Context) error {
+	ticker := time.NewTicker(time.Second * miningIntervalSecs)
+
+	var miningCtx context.Context
+	var miningCancel context.CancelFunc
 
 	for {
 		select {
 		case <-ticker.C:
-			fmt.Println("Searching for new Peer and Block...")
+			go func() {
+				if len(n.pendingTxs) > 0 && !n.isMining {
+					n.isMining = true
 
-			n.fetchNewBlocksAndPeers(ctx)
+					miningCtx, miningCancel = context.WithCancel(ctx)
+					if err := n.miningPendingTxs(miningCtx); err != nil {
+						fmt.Printf("Error: %v\n", err)
+					}
 
+					n.isMining = false
+				}
+			}()
+		case block := <-n.newSyncBlock:
+			if n.isMining {
+				hash, err := block.Hash()
+				if err != nil {
+					return err
+				}
+				fmt.Printf("Peer mined next Block '%x' faster\n", hash)
+
+				if err := n.removeMinedPendingTXs(block); err != nil {
+					return err
+				}
+				miningCancel()
+			}
 		case <-ctx.Done():
 			ticker.Stop()
+			return nil
 		}
 	}
 }
 
-func (n *Node) fetchNewBlocksAndPeers(ctx context.Context) {
-	for _, knownPeer := range n.knownPeers {
-		if knownPeer.IP == n.ip && knownPeer.Port == n.port {
-			continue
-		}
-
-		fmt.Printf("Searching for new Peers and their Blocks and Peers: '%s'\n", knownPeer.TCPAddress())
-
-		status, err := queryPeerStatus(ctx, knownPeer)
-		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			fmt.Printf("Peer '%s' was removed from KnownPeers\n", knownPeer.TCPAddress())
-
-			n.RemovePeer(knownPeer)
-			continue
-		}
-
-		if err := n.joinKnownPeers(ctx, knownPeer); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		if err := n.syncBlocks(ctx, knownPeer, status); err != nil {
-			fmt.Printf("Error: %v\n", err)
-			continue
-		}
-
-		n.syncKnownPeers(status.KnownPeers)
-	}
-}
-
-// Add peer to node.knowPeers
-func (n *Node) joinKnownPeers(ctx context.Context, peer PeerNode) error {
-	if peer.connected {
-		return nil
+func (n *Node) miningPendingTxs(ctx context.Context) error {
+	var pendingTxs []database.TX
+	for _, tx := range n.pendingTxs {
+		pendingTxs = append(pendingTxs, tx)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s?ip=%s&port=%d", peer.TCPAddress(), endpointAddPeer, n.ip, n.port), nil)
+	pb := NewPendingBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), pendingTxs)
+
+	minedBlock, err := Mine(ctx, pb)
 	if err != nil {
 		return err
 	}
 
-	r, err := http.DefaultClient.Do(req)
-	if err != nil {
+	if err := n.removeMinedPendingTXs(minedBlock); err != nil {
 		return err
 	}
 
-	rBodyJSON, err := ioutil.ReadAll(r.Body)
-	if err != nil {
+	if _, err := n.state.AddBlock(minedBlock); err != nil {
 		return err
 	}
-	defer r.Body.Close()
 
-	addPeerRes := AddPeerRes{}
-	if err := json.Unmarshal(rBodyJSON, &addPeerRes); err != nil {
-		return err
-	}
-	if addPeerRes.Error != "" {
-		return fmt.Errorf(addPeerRes.Error)
-	}
-
-	peer.connected = addPeerRes.Success
-	n.AddPeer(peer)
-
-	if !addPeerRes.Success {
-		return fmt.Errorf("unable to join KnownPeers of '%s'", peer.TCPAddress())
-	}
 	return nil
 }
 
-// Fetch blocks from peer
-func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) error {
-	localBlockNumber := n.state.LatestBlock().Header.Number
-
-	if status.Hash.IsEmpty() {
+func (n *Node) removeMinedPendingTXs(block database.Block) error {
+	if len(n.pendingTxs) == 0 || len(block.TXs) == 0 {
 		return nil
 	}
 
-	if status.Number < localBlockNumber {
-		return nil
-	}
-
-	if status.Number == 0 && !n.state.LatestBlockHash().IsEmpty() {
-		return nil
-	}
-
-	newBlocksCount := status.Number - localBlockNumber
-	if localBlockNumber == 0 && status.Number == 0 {
-		newBlocksCount = 1
-	}
-	fmt.Printf("Found %d new blocks from Peer %s\n", newBlocksCount, peer.TCPAddress())
-
-	if newBlocksCount == 0 {
-		return nil
-	}
-
-	blocks, err := fetchBlocksFromPeer(ctx, peer, n.state.LatestBlockHash())
-	if err != nil {
-		return err
-	}
-
-	for _, block := range blocks {
-		if _, err := n.state.AddBlock(block); err != nil {
+	for _, tx := range block.TXs {
+		txHash, err := tx.Hash()
+		if err != nil {
 			return err
 		}
+
+		if _, exists := n.pendingTxs[txHash.Hex()]; exists {
+			delete(n.pendingTxs, txHash.Hex())
+
+			fmt.Printf("\t-archiving mined TX: %s\n", txHash.Hex())
+			n.archiveTxs[txHash.Hex()] = tx
+		}
 	}
 	return nil
-}
-
-// Sync node.knownPeers with peer.knownPeers
-func (n *Node) syncKnownPeers(knownPeers map[string]PeerNode) {
-	for _, peer := range knownPeers {
-		if peer.IP == n.ip && peer.Port == n.port {
-			continue
-		}
-		if _, isKnown := n.knownPeers[peer.TCPAddress()]; !isKnown {
-			fmt.Printf("Found new Peer: %s\n", peer.TCPAddress())
-			n.AddPeer(peer)
-		}
-	}
-}
-
-func queryPeerStatus(ctx context.Context, peer PeerNode) (StatusRes, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s", peer.TCPAddress(), endpointStatus), nil)
-	if err != nil {
-		return StatusRes{}, err
-	}
-
-	r, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return StatusRes{}, err
-	}
-
-	rBodyJSON, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return StatusRes{}, err
-	}
-	defer r.Body.Close()
-
-	var statusRes StatusRes
-	if err = json.Unmarshal(rBodyJSON, &statusRes); err != nil {
-		return StatusRes{}, err
-	}
-	return statusRes, nil
-}
-
-func fetchBlocksFromPeer(ctx context.Context, peer PeerNode, hash database.Hash) ([]database.Block, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("http://%s%s?hash=%x", peer.TCPAddress(), endpointFetchBlocks, hash), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	r, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	rBodyJSON, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Body.Close()
-
-	var statusRes FetchBlocksRes
-	if err = json.Unmarshal(rBodyJSON, &statusRes); err != nil {
-		return nil, err
-	}
-	return statusRes.Blocks, nil
 }

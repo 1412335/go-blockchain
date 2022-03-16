@@ -15,6 +15,10 @@ type PendingBlock struct {
 	txs    []database.TX
 }
 
+func NewPendingBlock(parent database.Hash, number uint64, txs []database.TX) PendingBlock {
+	return PendingBlock{parent, number, uint64(time.Now().Unix()), txs}
+}
+
 func Mine(ctx context.Context, pendingBlock PendingBlock) (database.Block, error) {
 	if len(pendingBlock.txs) == 0 {
 		return database.Block{}, fmt.Errorf("empty block")
