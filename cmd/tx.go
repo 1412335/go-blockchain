@@ -56,8 +56,12 @@ func txAddCmd() *cobra.Command {
 			// 	fmt.Fprintln(os.Stderr, err)
 			// 	os.Exit(1)
 			// }
-
-			block := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{tx})
+			nonce, err := database.RandomNonce()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			block := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, []database.TX{tx})
 
 			hash, err := state.AddBlock(block)
 			if err != nil {

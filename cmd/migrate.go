@@ -27,31 +27,52 @@ func migrateCmd() *cobra.Command {
 			}
 			defer state.Close()
 
-			block0 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
-				database.NewTX("andrej", "babayaga", 2000, ""),
-				database.NewTX("andrej", "andrej", 100, "reward"),
-			})
+			nonce, err := database.RandomNonce()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			block0 := database.NewBlock(
+				state.LatestBlockHash(),
+				state.NextBlockNumber(),
+				uint64(time.Now().Unix()),
+				nonce,
+				[]database.TX{
+					database.NewTX("andrej", "babayaga", 2000, ""),
+					database.NewTX("andrej", "andrej", 100, "reward"),
+				})
 			if _, err = state.AddBlock(block0); err != nil {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)
 			}
 
-			block1 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
-				database.NewTX("babayaga", "andrej", 1, ""),
-				database.NewTX("babayaga", "caesar", 1000, ""),
-				database.NewTX("babayaga", "andrej", 50, ""),
-				database.NewTX("andrej", "andrej", 600, "reward"),
-			})
+			block1 := database.NewBlock(
+				state.LatestBlockHash(),
+				state.NextBlockNumber(),
+				uint64(time.Now().Unix()),
+				nonce,
+				[]database.TX{
+					database.NewTX("babayaga", "andrej", 1, ""),
+					database.NewTX("babayaga", "caesar", 1000, ""),
+					database.NewTX("babayaga", "andrej", 50, ""),
+					database.NewTX("andrej", "andrej", 600, "reward"),
+				})
 			if _, err = state.AddBlock(block1); err != nil {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)
 			}
 
-			block2 := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{
-				database.NewTX("babayaga", "andrej", 100, ""),
-				database.NewTX("caesar", "andrej", 50, ""),
-				database.NewTX("andrej", "andrej", 200, "reward"),
-			})
+			block2 := database.NewBlock(
+				state.LatestBlockHash(),
+				state.NextBlockNumber(),
+				uint64(time.Now().Unix()),
+				nonce,
+				[]database.TX{
+					database.NewTX("babayaga", "andrej", 100, ""),
+					database.NewTX("caesar", "andrej", 50, ""),
+					database.NewTX("andrej", "andrej", 200, "reward"),
+				})
 			if _, err = state.AddBlock(block2); err != nil {
 				fmt.Fprint(os.Stderr, err)
 				os.Exit(1)

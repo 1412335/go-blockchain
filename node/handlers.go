@@ -34,7 +34,13 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, n *Node) {
 
 	tx := database.NewTX(database.Account(txAddReq.From), database.Account(txAddReq.To), txAddReq.Value, txAddReq.Data)
 
-	block := database.NewBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), uint64(time.Now().Unix()), []database.TX{tx})
+	nonce, err := database.RandomNonce()
+	if err != nil {
+		writeErrorResponse(w, err)
+		return
+	}
+
+	block := database.NewBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, []database.TX{tx})
 
 	hash, err := n.state.AddBlock(block)
 	if err != nil {

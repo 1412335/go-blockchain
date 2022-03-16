@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 )
 
 type State struct {
@@ -160,32 +159,32 @@ func (s *State) NextBlockNumber() uint64 {
 	return s.latestBlock.Header.Number + 1
 }
 
-func (s *State) Persist() (Hash, error) {
-	block := NewBlock(s.latestBlockHash, s.NextBlockNumber(), uint64(time.Now().Unix()), s.txMempool)
-	blockHash, err := block.Hash()
-	if err != nil {
-		return Hash{}, err
-	}
+// func (s *State) Persist() (Hash, error) {
+// 	block := NewBlock(s.latestBlockHash, s.NextBlockNumber(), uint64(time.Now().Unix()), s.txMempool)
+// 	blockHash, err := block.Hash()
+// 	if err != nil {
+// 		return Hash{}, err
+// 	}
 
-	blockFS := BlockFS{blockHash, block}
-	blockFSJSON, err := json.Marshal(blockFS)
-	if err != nil {
-		return Hash{}, err
-	}
+// 	blockFS := BlockFS{blockHash, block}
+// 	blockFSJSON, err := json.Marshal(blockFS)
+// 	if err != nil {
+// 		return Hash{}, err
+// 	}
 
-	fmt.Printf("Persist new block to disk\n")
-	fmt.Printf("\t%s\n", blockFSJSON)
-	if _, err := s.dbFile.Write(append(blockFSJSON, '\n')); err != nil {
-		return Hash{}, err
-	}
+// 	fmt.Printf("Persist new block to disk\n")
+// 	fmt.Printf("\t%s\n", blockFSJSON)
+// 	if _, err := s.dbFile.Write(append(blockFSJSON, '\n')); err != nil {
+// 		return Hash{}, err
+// 	}
 
-	s.latestBlockHash = blockHash
-	fmt.Printf("New DB hash: %x\n", s.latestBlockHash)
+// 	s.latestBlockHash = blockHash
+// 	fmt.Printf("New DB hash: %x\n", s.latestBlockHash)
 
-	s.txMempool = []TX{}
+// 	s.txMempool = []TX{}
 
-	return s.latestBlockHash, nil
-}
+// 	return s.latestBlockHash, nil
+// }
 
 func (s *State) Close() error {
 	return s.dbFile.Close()
