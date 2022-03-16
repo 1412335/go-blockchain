@@ -158,22 +158,8 @@ func (n *Node) syncKnownPeers(knownPeers map[string]PeerNode) {
 
 func (n *Node) syncPendingTXs(peer PeerNode, pendingTXs []database.TX) error {
 	for _, tx := range pendingTXs {
-		txHash, err := tx.Hash()
-		if err != nil {
+		if err := n.AddPendingTX(tx, peer); err != nil {
 			return err
-		}
-
-		txJSON, err := json.Marshal(tx)
-		if err != nil {
-			return err
-		}
-
-		_, isPending := n.pendingTxs[txHash.Hex()]
-		_, isArchived := n.archiveTxs[txHash.Hex()]
-
-		if !isPending && !isArchived {
-			fmt.Printf("Added Pending TX %s from Peer %s\n", txJSON, peer.TCPAddress())
-			n.pendingTxs[txHash.Hex()] = tx
 		}
 	}
 	return nil

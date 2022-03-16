@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -120,6 +121,27 @@ func (n *Node) AddPeer(peer PeerNode) {
 
 func (n *Node) RemovePeer(peer PeerNode) {
 	delete(n.knownPeers, peer.TCPAddress())
+}
+
+func (n *Node) AddPendingTX(tx database.TX, peer PeerNode) error {
+	txHash, err := tx.Hash()
+	if err != nil {
+		return err
+	}
+
+	txJSON, err := json.Marshal(tx)
+	if err != nil {
+		return err
+	}
+
+	_, isPending := n.pendingTxs[txHash.Hex()]
+	_, isArchived := n.archiveTxs[txHash.Hex()]
+
+	if !isPending && !isArchived {
+		fmt.Printf("Added Pending TX %s from Peer %s\n", txJSON, peer.TCPAddress())
+		n.pendingTxs[txHash.Hex()] = tx
+	}
+	return nil
 }
 
 func (n *Node) mine(ctx context.Context) error {

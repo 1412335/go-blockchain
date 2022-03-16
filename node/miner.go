@@ -39,7 +39,7 @@ func Mine(ctx context.Context, pendingBlock PendingBlock) (database.Block, error
 		attempts++
 
 		if attempts%1e6 == 0 || attempts == 1 {
-			fmt.Printf("Mining %d pending txs. Attempts #%d\n", len(pendingBlock.txs), attempts)
+			fmt.Printf("Mining %d pending TXs. Attempts #%d\n", len(pendingBlock.txs), attempts)
 		}
 
 		nonce, err := database.RandomNonce()

@@ -53,7 +53,7 @@ lint: fmt
 # go-test
 .PHONY: test
 test: lint
-	go test -v ./service/user/
+	go test -v ./...
 
 # cleaning
 .PHONY: clean
