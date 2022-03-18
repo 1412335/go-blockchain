@@ -125,6 +125,10 @@ func (n *Node) RemovePeer(peer PeerNode) {
 	delete(n.knownPeers, peer.TCPAddress())
 }
 
+func (n *Node) LatestBlockHash() database.Hash {
+	return n.state.LatestBlockHash()
+}
+
 func (n *Node) AddPendingTX(tx database.TX, peer PeerNode) error {
 	txHash, err := tx.Hash()
 	if err != nil {

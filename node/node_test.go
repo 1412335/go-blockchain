@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -72,19 +73,127 @@ func TestNode_Mining(t *testing.T) {
 	}
 }
 
-// func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
-// 	datadir := getTestDataDirPath()
-// 	err := os.RemoveAll(datadir)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
+func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
+	datadir := getTestDataDirPath()
+	err := os.RemoveAll(datadir)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-// 	peer := NewPeerNode("127.0.0.1", 8087, true, true)
-// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 
-// 	n1 := New(datadir, "127.0.0.1", 8088, peer)
+	tx1 := database.NewTX("andrej", "babayaga", 40, "")
+	tx2 := database.NewTX("andrej", "andrej", 100, "reward")
+	tx2Hash, _ := tx2.Hash()
 
-// 	if err := n1.Run(ctx); err != nil {
-// 		t.Fatalf("unexpected error: %v", err)
-// 	}
-// }
+	andrejAcc := database.NewAccount("andrej")
+	babayagaAcc := database.NewAccount("babayaga")
+
+	minedBlock, err := Mine(ctx, NewPendingBlock(database.Hash{}, 0, andrejAcc, []database.TX{tx1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	peer := NewPeerNode("127.0.0.1", 8087, true, true)
+	n := New(datadir, "127.0.0.1", 8088, babayagaAcc, peer)
+
+	errs := make(chan error, 1)
+
+	go func() {
+		err := n.AddPendingTX(tx1, peer)
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		err = n.AddPendingTX(tx2, peer)
+		if err != nil {
+			errs <- err
+			return
+		}
+	}()
+
+	go func() {
+		time.Sleep(time.Second*miningIntervalSecs + 2)
+		if !n.isMining {
+			errs <- fmt.Errorf("node should be mining")
+			return
+		}
+
+		if _, err := n.state.AddBlock(minedBlock); err != nil {
+			errs <- err
+			return
+		}
+
+		n.newSyncedBlock <- minedBlock
+
+		time.Sleep(time.Second * 2)
+		if n.isMining {
+			errs <- fmt.Errorf("node should be stop mining")
+			return
+		}
+
+		_, tx2InPending := n.pendingTxs[tx2Hash.Hex()]
+
+		if len(n.pendingTxs) != 1 || !tx2InPending {
+			errs <- fmt.Errorf("missing tx2 in pending")
+			return
+		}
+
+		time.Sleep(time.Second*miningIntervalSecs + 2)
+		if !n.isMining {
+			errs <- fmt.Errorf("node should be mining tx2")
+			return
+		}
+	}()
+
+	go func() {
+		ticker := time.NewTicker(time.Second * 10)
+		for range ticker.C {
+			if n.state.LatestBlock().Header.Number == 1 {
+				cancel()
+				close(errs)
+				return
+			}
+		}
+	}()
+
+	go func() {
+		time.Sleep(time.Second * 2)
+		oldBalances := n.state.Balances
+
+		<-ctx.Done()
+
+		newBalances := n.state.Balances
+
+		expectedAndrejBalance := oldBalances[andrejAcc] - tx1.Value + tx2.Value + database.BlockReward
+		expectedBabayagaBalance := oldBalances[babayagaAcc] + tx1.Value + database.BlockReward
+
+		if newBalances[andrejAcc] != expectedAndrejBalance {
+			errs <- fmt.Errorf("Andrej's balance expected: %d, got: %d", expectedAndrejBalance, newBalances[andrejAcc])
+			return
+		}
+
+		if newBalances[babayagaAcc] != expectedBabayagaBalance {
+			errs <- fmt.Errorf("Babayaga's balance expected: %d, got: %d", expectedBabayagaBalance, newBalances[babayagaAcc])
+			return
+		}
+
+		t.Logf("Starting Andrej balance: %d", oldBalances[andrejAcc])
+		t.Logf("Starting BabaYaga balance: %d", oldBalances[babayagaAcc])
+		t.Logf("Ending Andrej balance: %d", newBalances[andrejAcc])
+		t.Logf("Ending BabaYaga balance: %d", newBalances[babayagaAcc])
+	}()
+
+	go func() {
+		if err := n.Run(ctx); err != nil {
+			errs <- fmt.Errorf("unexpected error: %v", err)
+			return
+		}
+	}()
+
+	err = <-errs
+	if err != nil {
+		t.Fatal(err)
+	}
+}
