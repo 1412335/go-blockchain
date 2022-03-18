@@ -27,6 +27,8 @@ func migrateCmd() *cobra.Command {
 			}
 			defer state.Close()
 
+			miner := database.NewAccount("andrej")
+
 			nonce, err := database.RandomNonce()
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -38,6 +40,7 @@ func migrateCmd() *cobra.Command {
 				state.NextBlockNumber(),
 				uint64(time.Now().Unix()),
 				nonce,
+				miner,
 				[]database.TX{
 					database.NewTX("andrej", "babayaga", 2000, ""),
 					database.NewTX("andrej", "andrej", 100, "reward"),
@@ -52,6 +55,7 @@ func migrateCmd() *cobra.Command {
 				state.NextBlockNumber(),
 				uint64(time.Now().Unix()),
 				nonce,
+				miner,
 				[]database.TX{
 					database.NewTX("babayaga", "andrej", 1, ""),
 					database.NewTX("babayaga", "caesar", 1000, ""),
@@ -68,6 +72,7 @@ func migrateCmd() *cobra.Command {
 				state.NextBlockNumber(),
 				uint64(time.Now().Unix()),
 				nonce,
+				miner,
 				[]database.TX{
 					database.NewTX("babayaga", "andrej", 100, ""),
 					database.NewTX("caesar", "andrej", 50, ""),

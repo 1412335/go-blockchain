@@ -138,7 +138,7 @@ func (n *Node) syncBlocks(ctx context.Context, peer PeerNode, status StatusRes) 
 			return err
 		}
 		// alert sync block & stop mining that block
-		n.newSyncBlock <- block
+		n.newSyncedBlock <- block
 	}
 	return nil
 }

@@ -21,7 +21,7 @@ func TestNode_Run(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n := New(datadir, "127.0.0.1", 8088, PeerNode{})
+	n := New(datadir, "127.0.0.1", 8088, database.NewAccount("andrej"), PeerNode{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := n.Run(ctx); err != nil {
@@ -40,7 +40,7 @@ func TestNode_Mining(t *testing.T) {
 	peer := NewPeerNode("127.0.0.1", 8087, true, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 
-	n := New(datadir, "127.0.0.1", 8088, peer)
+	n := New(datadir, "127.0.0.1", 8085, database.NewAccount("andrej"), peer)
 
 	go func() {
 		time.Sleep(time.Second * miningIntervalSecs / 5)
@@ -71,3 +71,20 @@ func TestNode_Mining(t *testing.T) {
 		t.Fatalf("expected Height=2, got %v", n.state.LatestBlock().Header.Number)
 	}
 }
+
+// func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
+// 	datadir := getTestDataDirPath()
+// 	err := os.RemoveAll(datadir)
+// 	if err != nil {
+// 		t.Fatal(err)
+// 	}
+
+// 	peer := NewPeerNode("127.0.0.1", 8087, true, true)
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+
+// 	n1 := New(datadir, "127.0.0.1", 8088, peer)
+
+// 	if err := n1.Run(ctx); err != nil {
+// 		t.Fatalf("unexpected error: %v", err)
+// 	}
+// }

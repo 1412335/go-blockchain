@@ -40,13 +40,14 @@ type Node struct {
 
 	knownPeers map[string]PeerNode
 
-	archiveTxs   map[string]database.TX
-	pendingTxs   map[string]database.TX
-	isMining     bool
-	newSyncBlock chan database.Block
+	archiveTxs     map[string]database.TX
+	pendingTxs     map[string]database.TX
+	isMining       bool
+	miner          database.Account
+	newSyncedBlock chan database.Block
 }
 
-func New(dataDir string, ip string, port uint64, bootstrap PeerNode) *Node {
+func New(dataDir string, ip string, port uint64, miner database.Account, bootstrap PeerNode) *Node {
 	return &Node{
 		dataDir: dataDir,
 		ip:      ip,
@@ -54,10 +55,11 @@ func New(dataDir string, ip string, port uint64, bootstrap PeerNode) *Node {
 		knownPeers: map[string]PeerNode{
 			bootstrap.TCPAddress(): bootstrap,
 		},
-		archiveTxs:   make(map[string]database.TX),
-		pendingTxs:   make(map[string]database.TX),
-		isMining:     false,
-		newSyncBlock: make(chan database.Block),
+		archiveTxs:     make(map[string]database.TX),
+		pendingTxs:     make(map[string]database.TX),
+		isMining:       false,
+		miner:          miner,
+		newSyncedBlock: make(chan database.Block),
 	}
 }
 
@@ -165,13 +167,13 @@ func (n *Node) mine(ctx context.Context) error {
 					n.isMining = false
 				}
 			}()
-		case block := <-n.newSyncBlock:
+		case block := <-n.newSyncedBlock:
 			if n.isMining {
 				hash, err := block.Hash()
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Peer mined next Block '%x' faster\n", hash)
+				fmt.Printf("Miner '%s' mined next Block '%x' faster\n", block.Header.Miner, hash)
 
 				if err := n.removeMinedPendingTXs(block); err != nil {
 					return err
@@ -191,7 +193,7 @@ func (n *Node) miningPendingTxs(ctx context.Context) error {
 		pendingTxs = append(pendingTxs, tx)
 	}
 
-	pb := NewPendingBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), pendingTxs)
+	pb := NewPendingBlock(n.state.LatestBlockHash(), n.state.NextBlockNumber(), n.miner, pendingTxs)
 
 	minedBlock, err := Mine(ctx, pb)
 	if err != nil {

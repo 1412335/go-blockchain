@@ -9,6 +9,8 @@ import (
 	"os"
 )
 
+const BlockReward = 100
+
 type State struct {
 	Balances  map[Account]uint `json:"balances"`
 	txMempool []TX
@@ -55,7 +57,7 @@ func NewStateFromDisk(dir string) (*State, error) {
 			return nil, err
 		}
 
-		if err := state.applyBlock(blockFS.Block); err != nil {
+		if err := applyBlock(state, blockFS.Block); err != nil {
 			return nil, err
 		}
 
@@ -78,20 +80,8 @@ func (s *State) AddTx(tx TX) error {
 func (s *State) AddBlock(b Block) (Hash, error) {
 	pendingState := s.copy()
 
-	nextExpectedBlockNumber := pendingState.NextBlockNumber()
-	if pendingState.hasGenesisBlock {
-		if b.Header.Number != nextExpectedBlockNumber {
-			return Hash{}, fmt.Errorf("expected block number %d, got %d", nextExpectedBlockNumber, b.Header.Number)
-		}
-		if pendingState.latestBlock.Header.Number > 0 && !bytes.Equal(pendingState.latestBlockHash[:], b.Header.Parent[:]) {
-			return Hash{}, fmt.Errorf("expected block hash %d, got %d", pendingState.latestBlockHash[:], b.Header.Parent[:])
-		}
-	}
-
-	for _, tx := range b.TXs {
-		if err := pendingState.apply(tx); err != nil {
-			return Hash{}, err
-		}
+	if err := applyBlock(pendingState, b); err != nil {
+		return Hash{}, err
 	}
 
 	hash, err := b.Hash()
@@ -135,12 +125,34 @@ func (s *State) apply(tx TX) error {
 	return nil
 }
 
-func (s *State) applyBlock(b Block) error {
+func applyBlock(state *State, b Block) error {
+	nextExpectedBlockNumber := state.NextBlockNumber()
+	if state.hasGenesisBlock {
+		if b.Header.Number != nextExpectedBlockNumber {
+			return fmt.Errorf("expected block number %d, got %d", nextExpectedBlockNumber, b.Header.Number)
+		}
+		if state.latestBlock.Header.Number > 0 && !bytes.Equal(state.latestBlockHash[:], b.Header.Parent[:]) {
+			return fmt.Errorf("expected block hash %d, got %d", state.latestBlockHash[:], b.Header.Parent[:])
+		}
+	}
+
+	hash, err := b.Hash()
+	if err != nil {
+		return err
+	}
+
+	if !hash.IsBlockHashValid() {
+		return fmt.Errorf("invalid block hash %x", hash)
+	}
+
 	for _, tx := range b.TXs {
-		if err := s.apply(tx); err != nil {
+		if err := state.apply(tx); err != nil {
 			return err
 		}
 	}
+
+	state.Balances[b.Header.Miner] += BlockReward
+
 	return nil
 }
 

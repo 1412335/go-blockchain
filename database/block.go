@@ -14,10 +14,11 @@ type Block struct {
 }
 
 type BlockHeader struct {
-	Parent Hash   `json:"parent"`
-	Number uint64 `json:"number"`
-	Time   uint64 `json:"time"`
-	Nonce  uint32 `json:"nonce"`
+	Parent Hash    `json:"parent"`
+	Number uint64  `json:"number"`
+	Time   uint64  `json:"time"`
+	Nonce  uint32  `json:"nonce"`
+	Miner  Account `json:"miner"`
 }
 
 type BlockFS struct {
@@ -25,13 +26,14 @@ type BlockFS struct {
 	Block     Block `json:"block"`
 }
 
-func NewBlock(parentHash Hash, number uint64, time uint64, nonce uint32, txs []TX) Block {
+func NewBlock(parentHash Hash, number uint64, time uint64, nonce uint32, miner Account, txs []TX) Block {
 	return Block{
 		Header: BlockHeader{
 			Parent: parentHash,
 			Number: number,
 			Time:   time,
 			Nonce:  nonce,
+			Miner:  miner,
 		},
 		TXs: txs,
 	}

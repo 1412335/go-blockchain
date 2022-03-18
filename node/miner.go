@@ -12,11 +12,12 @@ type PendingBlock struct {
 	parent database.Hash
 	number uint64
 	time   uint64
+	miner  database.Account
 	txs    []database.TX
 }
 
-func NewPendingBlock(parent database.Hash, number uint64, txs []database.TX) PendingBlock {
-	return PendingBlock{parent, number, uint64(time.Now().Unix()), txs}
+func NewPendingBlock(parent database.Hash, number uint64, miner database.Account, txs []database.TX) PendingBlock {
+	return PendingBlock{parent, number, uint64(time.Now().Unix()), miner, txs}
 }
 
 func Mine(ctx context.Context, pendingBlock PendingBlock) (database.Block, error) {
@@ -52,6 +53,7 @@ func Mine(ctx context.Context, pendingBlock PendingBlock) (database.Block, error
 			pendingBlock.number,
 			pendingBlock.time,
 			nonce,
+			pendingBlock.miner,
 			pendingBlock.txs,
 		)
 
