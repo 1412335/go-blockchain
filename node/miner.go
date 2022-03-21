@@ -67,7 +67,7 @@ func Mine(ctx context.Context, pendingBlock PendingBlock) (database.Block, error
 	fmt.Printf("\tHeight: %d\n", block.Header.Number)
 	fmt.Printf("\tNonce: %d\n", block.Header.Nonce)
 	fmt.Printf("\tCreated: %v\n", block.Header.Time)
-	// fmt.Printf("\tMiner: %d\n", block.Header.Time)
+	fmt.Printf("\tMiner: %x\n", block.Header.Miner)
 	fmt.Printf("\tParent: %x\n", block.Header.Parent)
 	fmt.Printf("\tAttempts: %d\n", attempts)
 	fmt.Printf("\tTime mining: %s\n", time.Since(start))

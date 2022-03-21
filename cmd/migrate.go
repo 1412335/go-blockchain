@@ -8,6 +8,7 @@ import (
 
 	"github.com/1412335/the-blockchain-bar/database"
 	"github.com/1412335/the-blockchain-bar/node"
+	"github.com/1412335/the-blockchain-bar/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -31,11 +32,11 @@ func migrateCmd() *cobra.Command {
 			peer := node.NewPeerNode("127.0.0.1", 8080, true, true)
 			n := node.New(dir, "127.0.0.1", 8080, database.NewAccount(miner), peer)
 
-			n.AddPendingTX(database.NewTX("andrej", "babayaga", 2000, ""), peer)
-			n.AddPendingTX(database.NewTX("andrej", "andrej", 100, "reward"), peer)
-			n.AddPendingTX(database.NewTX("babayaga", "andrej", 1, ""), peer)
-			n.AddPendingTX(database.NewTX("babayaga", "caesar", 1000, ""), peer)
-			n.AddPendingTX(database.NewTX("babayaga", "andrej", 50, ""), peer)
+			n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 2000, ""), peer)
+			n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"), peer)
+			n.AddPendingTX(database.NewTX(wallet.BabayagaAccount, wallet.AndrejAccount, 1, ""), peer)
+			n.AddPendingTX(database.NewTX(wallet.BabayagaAccount, wallet.CaesarAccount, 1000, ""), peer)
+			n.AddPendingTX(database.NewTX(wallet.BabayagaAccount, wallet.AndrejAccount, 50, ""), peer)
 
 			ctx, nodeStop := context.WithTimeout(context.Background(), 10*time.Minute)
 

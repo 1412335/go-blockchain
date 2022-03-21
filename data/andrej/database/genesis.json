@@ -3,6 +3,6 @@
   "genesis_time": "2019-03-18T00:00:00.000000000Z",
   "chain_id": "the-blockchain-bar-ledger",
   "balances": {
-    "andrej": 1000000
+    "0xf57913DB69e172c0aD5018Fb0CEBf63308B2B8D7": 1000000
   }
 }

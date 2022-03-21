@@ -6,12 +6,6 @@ import (
 	"time"
 )
 
-type Account string
-
-func NewAccount(name string) Account {
-	return Account(name)
-}
-
 type TX struct {
 	From  Account `json:"from"`
 	To    Account `json:"to"`

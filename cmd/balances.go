@@ -29,12 +29,7 @@ func balancesListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "Show all balances",
 		Run: func(cmd *cobra.Command, args []string) {
-			dir, err := cmd.Flags().GetString(flagDataDir)
-			if err != nil {
-				fmt.Fprint(os.Stderr, err)
-				os.Exit(1)
-			}
-
+			dir := getDataDirFromCmd(cmd)
 			state, err := database.NewStateFromDisk(dir)
 			if err != nil {
 				fmt.Fprint(os.Stderr, err)
@@ -46,7 +41,7 @@ func balancesListCmd() *cobra.Command {
 			fmt.Println("__________________")
 			fmt.Println("")
 			for account, balance := range state.Balances {
-				fmt.Printf("%s: %d\n", account, balance)
+				fmt.Printf("%s: %d\n", account.Hex(), balance)
 			}
 		},
 	}
@@ -58,4 +53,13 @@ func balancesListCmd() *cobra.Command {
 func addDefaultRequiredFlags(cmd *cobra.Command) {
 	cmd.Flags().String(flagDataDir, "", "Absolute path to the database")
 	cmd.MarkFlagRequired(flagDataDir)
+}
+
+func getDataDirFromCmd(cmd *cobra.Command) string {
+	dir, err := cmd.Flags().GetString(flagDataDir)
+	if err != nil {
+		fmt.Fprint(os.Stderr, err)
+		os.Exit(1)
+	}
+	return dir
 }

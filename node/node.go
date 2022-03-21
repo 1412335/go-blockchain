@@ -81,28 +81,31 @@ func (n *Node) Run(ctx context.Context) error {
 	go n.sync(ctx)
 	go n.mine(ctx)
 
-	http.HandleFunc("/balances/list", func(w http.ResponseWriter, r *http.Request) {
+	handler := http.NewServeMux()
+
+	handler.HandleFunc("/balances/list", func(w http.ResponseWriter, r *http.Request) {
 		listBalancesHandler(w, r, n)
 	})
 
-	http.HandleFunc("/tx/add", func(w http.ResponseWriter, r *http.Request) {
+	handler.HandleFunc("/tx/add", func(w http.ResponseWriter, r *http.Request) {
 		addTransactionHandler(w, r, n)
 	})
 
-	http.HandleFunc("/node/status", func(w http.ResponseWriter, r *http.Request) {
+	handler.HandleFunc("/node/status", func(w http.ResponseWriter, r *http.Request) {
 		nodeStatusHandler(w, r, n)
 	})
 
-	http.HandleFunc(endpointAddPeer, func(w http.ResponseWriter, r *http.Request) {
+	handler.HandleFunc(endpointAddPeer, func(w http.ResponseWriter, r *http.Request) {
 		addPeerHandler(w, r, n)
 	})
 
-	http.HandleFunc(endpointFetchBlocks, func(w http.ResponseWriter, r *http.Request) {
+	handler.HandleFunc(endpointFetchBlocks, func(w http.ResponseWriter, r *http.Request) {
 		fetchBlocksHandler(w, r, n)
 	})
 
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", n.port),
+		Addr:    fmt.Sprintf(":%d", n.port),
+		Handler: handler,
 	}
 
 	go func() {

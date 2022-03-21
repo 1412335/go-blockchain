@@ -27,6 +27,10 @@ gen-openapi:
 	@echo "====Gen OpenAPI===="
 	sh ./script/gen-openapi.sh
 
+.PHONY: build
+build:
+	go build -o tbb ./cmd
+
 #
 .PHONY: run
 run: lint clean

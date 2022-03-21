@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
+	"github.com/1412335/the-blockchain-bar/wallet"
 )
 
 func TestValidBlockHash(t *testing.T) {
@@ -39,9 +40,10 @@ func createRandomPendingBlock() PendingBlock {
 		parent: database.Hash{},
 		number: 0,
 		time:   uint64(time.Now().Unix()),
+		miner:  database.NewAccount(wallet.AndrejAccount),
 		txs: []database.TX{
-			database.NewTX("andrej", "andrej", 1, ""),
-			database.NewTX("andrej", "andrej", 100, "reward"),
+			database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 1, ""),
+			database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"),
 		},
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
+	"github.com/1412335/the-blockchain-bar/wallet"
 )
 
 func getTestDataDirPath() string {
@@ -22,7 +23,7 @@ func TestNode_Run(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	n := New(datadir, "127.0.0.1", 8088, database.NewAccount("andrej"), PeerNode{})
+	n := New(datadir, "127.0.0.1", 8086, database.NewAccount(wallet.AndrejAccount), PeerNode{})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	if err := n.Run(ctx); err != nil {
@@ -41,16 +42,16 @@ func TestNode_Mining(t *testing.T) {
 	peer := NewPeerNode("127.0.0.1", 8087, true, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 
-	n := New(datadir, "127.0.0.1", 8085, database.NewAccount("andrej"), peer)
+	n := New(datadir, "127.0.0.1", 8085, database.NewAccount(wallet.AndrejAccount), peer)
 
 	go func() {
 		time.Sleep(time.Second * miningIntervalSecs / 5)
-		n.AddPendingTX(database.NewTX("andrej", "andrej", 100, "reward"), peer)
+		n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"), peer)
 	}()
 
 	go func() {
 		time.Sleep(time.Second*miningIntervalSecs + 5)
-		n.AddPendingTX(database.NewTX("andrej", "babayaga", 30, ""), peer)
+		n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 30, ""), peer)
 	}()
 
 	go func() {
@@ -82,12 +83,12 @@ func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 
-	tx1 := database.NewTX("andrej", "babayaga", 40, "")
-	tx2 := database.NewTX("andrej", "andrej", 100, "reward")
+	tx1 := database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 40, "")
+	tx2 := database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward")
 	tx2Hash, _ := tx2.Hash()
 
-	andrejAcc := database.NewAccount("andrej")
-	babayagaAcc := database.NewAccount("babayaga")
+	andrejAcc := database.NewAccount(wallet.AndrejAccount)
+	babayagaAcc := database.NewAccount(wallet.BabayagaAccount)
 
 	minedBlock, err := Mine(ctx, NewPendingBlock(database.Hash{}, 0, andrejAcc, []database.TX{tx1}))
 	if err != nil {
