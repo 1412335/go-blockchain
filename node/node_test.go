@@ -40,7 +40,7 @@ func TestNode_Mining(t *testing.T) {
 	}
 
 	peer := NewPeerNode("127.0.0.1", 8087, true, true)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
 	n := New(datadir, "127.0.0.1", 8085, database.NewAccount(wallet.AndrejAccount), peer)
 
@@ -81,7 +81,7 @@ func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 
 	tx1 := database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 40, "")
 	tx2 := database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward")
@@ -171,12 +171,12 @@ func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
 		expectedBabayagaBalance := oldBalances[babayagaAcc] + tx1.Value + database.BlockReward
 
 		if newBalances[andrejAcc] != expectedAndrejBalance {
-			errs <- fmt.Errorf("Andrej's balance expected: %d, got: %d", expectedAndrejBalance, newBalances[andrejAcc])
+			errs <- fmt.Errorf("andrej's balance expected: %d, got: %d", expectedAndrejBalance, newBalances[andrejAcc])
 			return
 		}
 
 		if newBalances[babayagaAcc] != expectedBabayagaBalance {
-			errs <- fmt.Errorf("Babayaga's balance expected: %d, got: %d", expectedBabayagaBalance, newBalances[babayagaAcc])
+			errs <- fmt.Errorf("babayaga's balance expected: %d, got: %d", expectedBabayagaBalance, newBalances[babayagaAcc])
 			return
 		}
 

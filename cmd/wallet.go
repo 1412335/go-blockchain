@@ -38,14 +38,13 @@ func walletNewAccountCmd() *cobra.Command {
 
 			dir := getDataDirFromCmd(c)
 
-			ks := keystore.NewKeyStore(wallet.GetKeystoreDirPath(dir), keystore.StandardScryptN, keystore.StandardScryptP)
-			acc, err := ks.NewAccount(password)
+			acc, err := wallet.NewKeyStoreAccount(dir, password)
 			if err != nil {
 				fmt.Printf("Error creating account: %v", err)
 				os.Exit(1)
 			}
 
-			fmt.Printf("New account created: %s", acc.Address.Hex())
+			fmt.Printf("New account created: %s", acc.Hex())
 		},
 	}
 
