@@ -13,7 +13,7 @@ const BlockReward = 100
 
 type State struct {
 	Balances  map[Account]uint `json:"balances"`
-	txMempool []TX
+	txMempool []SignedTx
 
 	dbFile *os.File
 
@@ -43,7 +43,7 @@ func NewStateFromDisk(dir string) (*State, error) {
 		return nil, err
 	}
 
-	state := &State{balances, make([]TX, 0), f, Block{}, Hash{}, false}
+	state := &State{balances, make([]SignedTx, 0), f, Block{}, Hash{}, false}
 
 	scanner := bufio.NewScanner(f)
 
@@ -69,7 +69,7 @@ func NewStateFromDisk(dir string) (*State, error) {
 	return state, nil
 }
 
-func (s *State) AddTx(tx TX) error {
+func (s *State) AddTx(tx SignedTx) error {
 	if err := s.apply(tx); err != nil {
 		return err
 	}
@@ -109,14 +109,14 @@ func (s *State) AddBlock(b Block) (Hash, error) {
 	return hash, nil
 }
 
-func (s *State) apply(tx TX) error {
+func (s *State) apply(tx SignedTx) error {
 	if tx.IsReward() {
 		s.Balances[tx.To] += tx.Value
 		return nil
 	}
 
 	if s.Balances[tx.From] < tx.Value {
-		return fmt.Errorf("wrong TX. Sender %s balance is %d, but cost is %d", tx.From, s.Balances[tx.From], tx.Value)
+		return fmt.Errorf("wrong TX. Sender %s balance is %d, but cost is %d", tx.From.Hex(), s.Balances[tx.From], tx.Value)
 	}
 
 	s.Balances[tx.From] -= tx.Value
@@ -257,7 +257,7 @@ func (s *State) copy() *State {
 		cp.Balances[accout] = balance
 	}
 
-	cp.txMempool = make([]TX, len(s.txMempool))
+	cp.txMempool = make([]SignedTx, len(s.txMempool))
 	cp.txMempool = append(cp.txMempool, s.txMempool...)
 
 	cp.latestBlock = s.latestBlock

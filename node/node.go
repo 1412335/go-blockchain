@@ -40,8 +40,8 @@ type Node struct {
 
 	knownPeers map[string]PeerNode
 
-	archiveTxs     map[string]database.TX
-	pendingTxs     map[string]database.TX
+	archivedTxs    map[string]database.SignedTx
+	pendingTxs     map[string]database.SignedTx
 	isMining       bool
 	miner          database.Account
 	newSyncedBlock chan database.Block
@@ -55,8 +55,8 @@ func New(dataDir string, ip string, port uint64, miner database.Account, bootstr
 		knownPeers: map[string]PeerNode{
 			bootstrap.TCPAddress(): bootstrap,
 		},
-		archiveTxs:     make(map[string]database.TX),
-		pendingTxs:     make(map[string]database.TX),
+		archivedTxs:    make(map[string]database.SignedTx),
+		pendingTxs:     make(map[string]database.SignedTx),
 		isMining:       false,
 		miner:          miner,
 		newSyncedBlock: make(chan database.Block),
@@ -132,23 +132,23 @@ func (n *Node) LatestBlockHash() database.Hash {
 	return n.state.LatestBlockHash()
 }
 
-func (n *Node) AddPendingTX(tx database.TX, peer PeerNode) error {
-	txHash, err := tx.Hash()
+func (n *Node) AddPendingTX(signedTx database.SignedTx, peer PeerNode) error {
+	txHash, err := signedTx.Hash()
 	if err != nil {
 		return err
 	}
 
-	txJSON, err := json.Marshal(tx)
+	txJSON, err := json.Marshal(signedTx)
 	if err != nil {
 		return err
 	}
 
 	_, isPending := n.pendingTxs[txHash.Hex()]
-	_, isArchived := n.archiveTxs[txHash.Hex()]
+	_, isArchived := n.archivedTxs[txHash.Hex()]
 
 	if !isPending && !isArchived {
 		fmt.Printf("Added Pending TX %s from Peer %s\n", txJSON, peer.TCPAddress())
-		n.pendingTxs[txHash.Hex()] = tx
+		n.pendingTxs[txHash.Hex()] = signedTx
 	}
 	return nil
 }
@@ -180,7 +180,7 @@ func (n *Node) mine(ctx context.Context) error {
 				if err != nil {
 					return err
 				}
-				fmt.Printf("Miner '%s' mined next Block '%x' faster\n", block.Header.Miner, hash)
+				fmt.Printf("Miner '%s' mined next Block '%x' faster\n", block.Header.Miner.Hex(), hash)
 
 				if err := n.removeMinedPendingTXs(block); err != nil {
 					return err
@@ -195,7 +195,7 @@ func (n *Node) mine(ctx context.Context) error {
 }
 
 func (n *Node) miningPendingTxs(ctx context.Context) error {
-	var pendingTxs []database.TX
+	var pendingTxs []database.SignedTx
 	for _, tx := range n.pendingTxs {
 		pendingTxs = append(pendingTxs, tx)
 	}
@@ -233,7 +233,7 @@ func (n *Node) removeMinedPendingTXs(block database.Block) error {
 			delete(n.pendingTxs, txHash.Hex())
 
 			fmt.Printf("\t-archiving mined TX: %s\n", txHash.Hex())
-			n.archiveTxs[txHash.Hex()] = tx
+			n.archivedTxs[txHash.Hex()] = tx
 		}
 	}
 	return nil

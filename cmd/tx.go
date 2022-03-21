@@ -1,11 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"os"
-	"time"
-
-	"github.com/1412335/the-blockchain-bar/database"
 	"github.com/spf13/cobra"
 )
 
@@ -33,43 +28,43 @@ func txAddCmd() *cobra.Command {
 		Use:   "add",
 		Short: "Add new transaction",
 		Run: func(cmd *cobra.Command, args []string) {
-			dir, _ := cmd.Flags().GetString(flagDataDir)
-			from, _ := cmd.Flags().GetString(flagFrom)
-			to, _ := cmd.Flags().GetString(flagTo)
-			value, _ := cmd.Flags().GetUint(flagValue)
-			data, _ := cmd.Flags().GetString(flagData)
+			// dir, _ := cmd.Flags().GetString(flagDataDir)
+			// from, _ := cmd.Flags().GetString(flagFrom)
+			// to, _ := cmd.Flags().GetString(flagTo)
+			// value, _ := cmd.Flags().GetUint(flagValue)
+			// data, _ := cmd.Flags().GetString(flagData)
 
-			tx := database.NewTX(from, to, value, data)
+			// tx := database.NewTX(from, to, value, data)
 
-			state, err := database.NewStateFromDisk(dir)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-
-			// if err := state.AddTx(tx); err != nil {
+			// state, err := database.NewStateFromDisk(dir)
+			// if err != nil {
 			// 	fmt.Fprintln(os.Stderr, err)
 			// 	os.Exit(1)
 			// }
 
-			// if _, err := state.Persist(); err != nil {
+			// // if err := state.AddTx(tx); err != nil {
+			// // 	fmt.Fprintln(os.Stderr, err)
+			// // 	os.Exit(1)
+			// // }
+
+			// // if _, err := state.Persist(); err != nil {
+			// // 	fmt.Fprintln(os.Stderr, err)
+			// // 	os.Exit(1)
+			// // }
+			// nonce, err := database.RandomNonce()
+			// if err != nil {
 			// 	fmt.Fprintln(os.Stderr, err)
 			// 	os.Exit(1)
 			// }
-			nonce, err := database.RandomNonce()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			block := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, database.NewAccount("andrej"), []database.TX{tx})
+			// block := database.NewBlock(state.LatestBlockHash(), state.NextBlockNumber(), uint64(time.Now().Unix()), nonce, database.NewAccount("andrej"), []database.TX{tx})
 
-			hash, err := state.AddBlock(block)
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
+			// hash, err := state.AddBlock(block)
+			// if err != nil {
+			// 	fmt.Fprintln(os.Stderr, err)
+			// 	os.Exit(1)
+			// }
 
-			fmt.Printf("TX successfully added to the ledger at %x\n", hash)
+			// fmt.Printf("TX successfully added to the ledger at %x\n", hash)
 		},
 	}
 

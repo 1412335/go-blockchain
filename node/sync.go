@@ -156,7 +156,7 @@ func (n *Node) syncKnownPeers(knownPeers map[string]PeerNode) {
 	}
 }
 
-func (n *Node) syncPendingTXs(peer PeerNode, pendingTXs []database.TX) error {
+func (n *Node) syncPendingTXs(peer PeerNode, pendingTXs []database.SignedTx) error {
 	for _, tx := range pendingTXs {
 		if err := n.AddPendingTX(tx, peer); err != nil {
 			return err

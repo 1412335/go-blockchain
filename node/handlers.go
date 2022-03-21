@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"github.com/1412335/the-blockchain-bar/database"
+	"github.com/1412335/the-blockchain-bar/wallet"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 type ErrRes struct {
@@ -20,10 +22,11 @@ type BalancesRes struct {
 }
 
 type TxAddReq struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Value uint   `json:"value"`
-	Data  string `json:"data"`
+	From    string `json:"from"`
+	FromPwd string `json:"from_pwd"`
+	To      string `json:"to"`
+	Value   uint   `json:"value"`
+	Data    string `json:"data"`
 }
 
 type TxAddRes struct {
@@ -36,7 +39,7 @@ type StatusRes struct {
 	Number     uint64              `json:"block_number"`
 	KnownPeers map[string]PeerNode `json:"known_peers"`
 
-	PendingTxs []database.TX `json:"pending_txs"`
+	PendingTxs []database.SignedTx `json:"pending_txs"`
 }
 
 type AddPeerRes struct {
@@ -69,15 +72,35 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, n *Node) {
 		return
 	}
 
+	from := database.NewAccount(txAddReq.From)
+	if from.Hex() == common.HexToAddress("").Hex() {
+		writeErrorResponse(w, fmt.Errorf("from is invalid %s", from.Hex()))
+		return
+	}
+
+	if txAddReq.FromPwd == "" {
+		writeErrorResponse(w, fmt.Errorf("from password is missing"))
+		return
+	}
+
 	tx := database.NewTX(txAddReq.From, txAddReq.To, txAddReq.Value, txAddReq.Data)
 
-	txHash, err := tx.Hash()
+	signedTx, err := wallet.SignTxWithKeystoreAccount(tx, from, txAddReq.FromPwd, wallet.GetKeystoreDirPath(n.dataDir))
 	if err != nil {
 		writeErrorResponse(w, err)
 		return
 	}
 
-	n.pendingTxs[txHash.Hex()] = tx
+	// txHash, err := tx.Hash()
+	// if err != nil {
+	// 	writeErrorResponse(w, err)
+	// 	return
+	// }
+	// n.pendingTxs[txHash.Hex()] = signedTx
+	if err := n.AddPendingTX(signedTx, NewPeerNode(n.ip, n.port, false, true)); err != nil {
+		writeErrorResponse(w, err)
+		return
+	}
 
 	// nonce, err := database.RandomNonce()
 	// if err != nil {
@@ -97,7 +120,7 @@ func addTransactionHandler(w http.ResponseWriter, r *http.Request, n *Node) {
 }
 
 func nodeStatusHandler(w http.ResponseWriter, _ *http.Request, n *Node) {
-	var pendingTxs []database.TX
+	var pendingTxs []database.SignedTx
 	for _, tx := range n.pendingTxs {
 		pendingTxs = append(pendingTxs, tx)
 	}

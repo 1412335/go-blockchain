@@ -13,10 +13,10 @@ type PendingBlock struct {
 	number uint64
 	time   uint64
 	miner  database.Account
-	txs    []database.TX
+	txs    []database.SignedTx
 }
 
-func NewPendingBlock(parent database.Hash, number uint64, miner database.Account, txs []database.TX) PendingBlock {
+func NewPendingBlock(parent database.Hash, number uint64, miner database.Account, txs []database.SignedTx) PendingBlock {
 	return PendingBlock{parent, number, uint64(time.Now().Unix()), miner, txs}
 }
 

@@ -3,8 +3,10 @@ package node
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,8 +14,37 @@ import (
 	"github.com/1412335/the-blockchain-bar/wallet"
 )
 
+const andrejAccKeystore = "../data/andrej/keystore/UTC--2022-03-21T04-22-25.727222614Z--f57913db69e172c0ad5018fb0cebf63308b2b8d7"
+const andrejAccPwd = "123"
+
+const babayagaAccKeystore = "../data/babayaga/keystore/UTC--2022-03-21T04-22-54.946155728Z--ca22e5f9c5ae099f64991ab356826c4d52554bf8"
+const babayagaAccPwd = "456"
+
 func getTestDataDirPath() string {
 	return path.Join(os.TempDir(), ".tbb")
+}
+
+func copyKeystoreFileIntoTestDataDir(dir string, ksFile string) error {
+	keyDir := wallet.GetKeystoreDirPath(dir)
+
+	if err := os.MkdirAll(keyDir, os.ModePerm); err != nil {
+		return err
+	}
+
+	srcFile, err := os.Open(ksFile)
+	if err != nil {
+		return err
+	}
+
+	dstFile, err := os.Create(filepath.Join(keyDir, filepath.Base(ksFile)))
+	if err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return err
+	}
+	return nil
 }
 
 func TestNode_Run(t *testing.T) {
@@ -39,19 +70,51 @@ func TestNode_Mining(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	peer := NewPeerNode("127.0.0.1", 8087, true, true)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	if err := copyKeystoreFileIntoTestDataDir(datadir, andrejAccKeystore); err != nil {
+		t.Fatal(err)
+	}
 
-	n := New(datadir, "127.0.0.1", 8085, database.NewAccount(wallet.AndrejAccount), peer)
+	peer := NewPeerNode("127.0.0.1", 8087, true, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+
+	andrejAcc := database.NewAccount(wallet.AndrejAccount)
+	keystoreDir := wallet.GetKeystoreDirPath(datadir)
+
+	n := New(datadir, "127.0.0.1", 8085, andrejAcc, peer)
+
+	errs := make(chan error, 1)
 
 	go func() {
 		time.Sleep(time.Second * miningIntervalSecs / 5)
-		n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"), peer)
+
+		signedTx, err := wallet.SignTxWithKeystoreAccount(
+			database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"),
+			andrejAcc,
+			andrejAccPwd,
+			keystoreDir)
+
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		n.AddPendingTX(signedTx, peer)
 	}()
 
 	go func() {
 		time.Sleep(time.Second*miningIntervalSecs + 5)
-		n.AddPendingTX(database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 30, ""), peer)
+		signedTx, err := wallet.SignTxWithKeystoreAccount(
+			database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 30, ""),
+			andrejAcc,
+			andrejAccPwd,
+			keystoreDir)
+
+		if err != nil {
+			errs <- err
+			return
+		}
+
+		n.AddPendingTX(signedTx, peer)
 	}()
 
 	go func() {
@@ -59,18 +122,28 @@ func TestNode_Mining(t *testing.T) {
 		for range ticker.C {
 			if n.state.LatestBlock().Header.Number == 1 {
 				cancel()
+				close(errs)
 				return
 			}
 		}
 	}()
 
-	if err := n.Run(ctx); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	go func() {
+		if err := n.Run(ctx); err != nil {
+			errs <- fmt.Errorf("unexpected error: %v", err)
+			return
+		}
 
-	// run after node closed
-	if n.state.LatestBlock().Header.Number != 1 {
-		t.Fatalf("expected Height=2, got %v", n.state.LatestBlock().Header.Number)
+		// run after node closed
+		if n.state.LatestBlock().Header.Number != 1 {
+			errs <- fmt.Errorf("expected Height=2, got %v", n.state.LatestBlock().Header.Number)
+			return
+		}
+	}()
+
+	err = <-errs
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -81,16 +154,36 @@ func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	if err := copyKeystoreFileIntoTestDataDir(datadir, andrejAccKeystore); err != nil {
+		t.Fatal(err)
+	}
+	if err := copyKeystoreFileIntoTestDataDir(datadir, babayagaAccKeystore); err != nil {
+		t.Fatal(err)
+	}
 
-	tx1 := database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 40, "")
-	tx2 := database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward")
-	tx2Hash, _ := tx2.Hash()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 
 	andrejAcc := database.NewAccount(wallet.AndrejAccount)
 	babayagaAcc := database.NewAccount(wallet.BabayagaAccount)
+	keystoreDir := wallet.GetKeystoreDirPath(getTestDataDirPath())
 
-	minedBlock, err := Mine(ctx, NewPendingBlock(database.Hash{}, 0, andrejAcc, []database.TX{tx1}))
+	tx1 := database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 100, "")
+	tx2 := database.NewTX(wallet.BabayagaAccount, wallet.AndrejAccount, 40, "")
+	tx2Hash, err := tx2.Hash()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signedTx1, err := wallet.SignTxWithKeystoreAccount(tx1, andrejAcc, andrejAccPwd, keystoreDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signedTx2, err := wallet.SignTxWithKeystoreAccount(tx2, babayagaAcc, babayagaAccPwd, keystoreDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	minedBlock, err := Mine(ctx, NewPendingBlock(database.Hash{}, 0, andrejAcc, []database.SignedTx{signedTx1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,13 +194,13 @@ func TestNode_MiningStopOnNewSyncedBlock(t *testing.T) {
 	errs := make(chan error, 1)
 
 	go func() {
-		err := n.AddPendingTX(tx1, peer)
+		err := n.AddPendingTX(signedTx1, peer)
 		if err != nil {
 			errs <- err
 			return
 		}
 
-		err = n.AddPendingTX(tx2, peer)
+		err = n.AddPendingTX(signedTx2, peer)
 		if err != nil {
 			errs <- err
 			return

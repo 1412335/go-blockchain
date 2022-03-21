@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -35,21 +36,51 @@ func TestInvalidBlockHash(t *testing.T) {
 	}
 }
 
-func createRandomPendingBlock() PendingBlock {
+func createRandomPendingBlock() (PendingBlock, error) {
+	datadir := getTestDataDirPath()
+	err := os.RemoveAll(datadir)
+	if err != nil {
+		return PendingBlock{}, err
+	}
+
+	if err := copyKeystoreFileIntoTestDataDir(datadir, andrejAccKeystore); err != nil {
+		return PendingBlock{}, err
+	}
+	if err := copyKeystoreFileIntoTestDataDir(datadir, babayagaAccKeystore); err != nil {
+		return PendingBlock{}, err
+	}
+
+	andrejAcc := database.NewAccount(wallet.AndrejAccount)
+	babayagaAcc := database.NewAccount(wallet.BabayagaAccount)
+
+	signedTx1, err := wallet.SignTxWithKeystoreAccount(database.NewTX(wallet.AndrejAccount, wallet.BabayagaAccount, 100, ""), andrejAcc, andrejAccPwd, wallet.GetKeystoreDirPath(datadir))
+	if err != nil {
+		return PendingBlock{}, err
+	}
+
+	signedTx2, err := wallet.SignTxWithKeystoreAccount(database.NewTX(wallet.BabayagaAccount, wallet.AndrejAccount, 20, ""), babayagaAcc, babayagaAccPwd, wallet.GetKeystoreDirPath(datadir))
+	if err != nil {
+		return PendingBlock{}, err
+	}
+
 	return PendingBlock{
 		parent: database.Hash{},
 		number: 0,
 		time:   uint64(time.Now().Unix()),
 		miner:  database.NewAccount(wallet.AndrejAccount),
-		txs: []database.TX{
-			database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 1, ""),
-			database.NewTX(wallet.AndrejAccount, wallet.AndrejAccount, 100, "reward"),
+		txs: []database.SignedTx{
+			signedTx1,
+			signedTx2,
 		},
-	}
+	}, nil
 }
 
 func TestMine(t *testing.T) {
-	pb := createRandomPendingBlock()
+	pb, err := createRandomPendingBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ctx := context.Background()
 
 	minedBlock, err := Mine(ctx, pb)
@@ -68,9 +99,12 @@ func TestMine(t *testing.T) {
 }
 
 func TestMineWithTimeout(t *testing.T) {
-	pb := createRandomPendingBlock()
+	pb, err := createRandomPendingBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
 	ctx, _ := context.WithTimeout(context.Background(), 1*time.Millisecond)
-	_, err := Mine(ctx, pb)
+	_, err = Mine(ctx, pb)
 	if err == nil {
 		t.Fatal()
 	}

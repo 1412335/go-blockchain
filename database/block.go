@@ -10,7 +10,7 @@ import (
 
 type Block struct {
 	Header BlockHeader `json:"header"`
-	TXs    []TX        `json:"payload"`
+	TXs    []SignedTx  `json:"payload"`
 }
 
 type BlockHeader struct {
@@ -26,7 +26,7 @@ type BlockFS struct {
 	Block     Block `json:"block"`
 }
 
-func NewBlock(parentHash Hash, number uint64, time uint64, nonce uint32, miner Account, txs []TX) Block {
+func NewBlock(parentHash Hash, number uint64, time uint64, nonce uint32, miner Account, txs []SignedTx) Block {
 	return Block{
 		Header: BlockHeader{
 			Parent: parentHash,
