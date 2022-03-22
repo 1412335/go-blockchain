@@ -110,6 +110,14 @@ func (s *State) AddBlock(b Block) (Hash, error) {
 }
 
 func (s *State) apply(tx SignedTx) error {
+	isAuth, err := tx.IsAuthentic()
+	if err != nil {
+		return err
+	}
+	if !isAuth {
+		return fmt.Errorf("wrong TX. Sender '%s' is forged", tx.From.Hex())
+	}
+
 	if tx.IsReward() {
 		s.Balances[tx.To] += tx.Value
 		return nil

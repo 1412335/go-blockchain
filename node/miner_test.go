@@ -2,12 +2,14 @@ package node
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"os"
 	"testing"
 	"time"
 
 	"github.com/1412335/the-blockchain-bar/database"
 	"github.com/1412335/the-blockchain-bar/wallet"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 func TestValidBlockHash(t *testing.T) {
@@ -34,6 +36,29 @@ func TestInvalidBlockHash(t *testing.T) {
 	if isValid := hash.IsBlockHashValid(); isValid {
 		t.Fatalf("hash '%s' should not be valid", hexHash)
 	}
+}
+
+func generateKey() (*ecdsa.PrivateKey, error) {
+	privkey, err := crypto.GenerateKey()
+	if err != nil {
+		return nil, err
+	}
+	return privkey, nil
+}
+
+func createRandomPendingBlock2() (PendingBlock, error) {
+	privkey, err := generateKey()
+	if err != nil {
+		return PendingBlock{}, err
+	}
+
+	acc := wallet.PublicKeyToAccount(privkey.PublicKey)
+	signedTx, err := wallet.SignTx(database.NewTX(acc.Hex(), wallet.BabayagaAccount, 100, ""), privkey)
+	if err != nil {
+		return PendingBlock{}, err
+	}
+
+	return NewPendingBlock(database.Hash{}, 0, acc, []database.SignedTx{signedTx}), nil
 }
 
 func createRandomPendingBlock() (PendingBlock, error) {
@@ -63,20 +88,11 @@ func createRandomPendingBlock() (PendingBlock, error) {
 		return PendingBlock{}, err
 	}
 
-	return PendingBlock{
-		parent: database.Hash{},
-		number: 0,
-		time:   uint64(time.Now().Unix()),
-		miner:  database.NewAccount(wallet.AndrejAccount),
-		txs: []database.SignedTx{
-			signedTx1,
-			signedTx2,
-		},
-	}, nil
+	return NewPendingBlock(database.Hash{}, 0, andrejAcc, []database.SignedTx{signedTx1, signedTx2}), nil
 }
 
 func TestMine(t *testing.T) {
-	pb, err := createRandomPendingBlock()
+	pb, err := createRandomPendingBlock2()
 	if err != nil {
 		t.Fatal(err)
 	}
